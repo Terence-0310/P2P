@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.text.Font?>
+
+<VBox xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="org.example.p2pfileshare.controller.SummaryResultController"
+      spacing="0" alignment="TOP_CENTER"
+      stylesheets="@styles.css"
+      style="-fx-background-color: white; -fx-border-color: #a29bfe; -fx-border-width: 1; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.15), 15, 0, 0, 0);"
+      prefWidth="650" prefHeight="550">
+
+    <!-- Header Gradient -->
+    <HBox fx:id="headerBox" alignment="CENTER_LEFT" spacing="15"
+          style="-fx-background-color: linear-gradient(to right, #6a11cb, #2575fc); -fx-padding: 20 25;">
+        <Label text="✨" style="-fx-text-fill: white; -fx-font-size: 32px;" />
+        <VBox spacing="2">
+            <Label text="Tóm tắt nội dung"
+                   style="-fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 18px;" />
+            <Label fx:id="fileNameLabel" text="filename.txt"
+                   style="-fx-text-fill: rgba(255,255,255,0.85); -fx-font-size: 13px;" />
+        </VBox>
+    </HBox>
+
+    <!-- Body -->
+    <VBox spacing="10" VBox.vgrow="ALWAYS" style="-fx-padding: 20 25;">
+        <Label text="Nội dung chính:" style="-fx-font-weight: bold; -fx-text-fill: #2d3436; -fx-font-size: 14px;" />
+        
+        <TextArea fx:id="summaryArea" VBox.vgrow="ALWAYS" wrapText="true" editable="false"
+                  style="-fx-background-color: #f8f9fa; -fx-text-fill: #2d3436; -fx-font-family: 'Segoe UI', sans-serif; -fx-font-size: 15px; -fx-control-inner-background: #f8f9fa; -fx-background-insets: 0; -fx-padding: 10;"/>
+    </VBox>
+
+    <!-- Footer -->
+    <HBox spacing="15" alignment="CENTER_RIGHT" style="-fx-padding: 15 25; -fx-background-color: #f1f2f6; -fx-border-color: #dfe6e9; -fx-border-width: 1 0 0 0;">
+        <Button fx:id="copyButton" text="📋 Sao chép nội dung" onAction="#onCopy"
+                styleClass="button, outline" />
+
+        <Button text="Đóng" onAction="#onClose" defaultButton="true"
+                style="-fx-background-color: #6a11cb; -fx-text-fill: white; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold; -fx-padding: 9 25; -fx-font-size: 13px;" />
+    </HBox>
+
+</VBox>

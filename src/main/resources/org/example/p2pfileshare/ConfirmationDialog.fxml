@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<VBox xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+fx:controller="org.example.p2pfileshare.controller.ConfirmationController"
+spacing="0" alignment="TOP_CENTER"
+style="-fx-background-color: white; -fx-border-color: #bdc3c7; -fx-border-width: 1; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.2), 10, 0, 0, 0);">
+
+<HBox fx:id="headerBox" alignment="CENTER_LEFT" style="-fx-background-color: #e67e22; -fx-padding: 10 15;">
+<Label fx:id="titleLabel" text="⚠️ Xác nhận" style="-fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 14px;" />
+</HBox>
+
+<VBox spacing="20" alignment="CENTER" style="-fx-padding: 20 30;">
+
+<VBox spacing="10" alignment="CENTER">
+<Label fx:id="headerLabel" text="Bạn có chắc chắn không?"
+style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;" wrapText="true" textAlignment="CENTER"/>
+<Label fx:id="contentLabel" text="Hành động này không thể hoàn tác."
+style="-fx-text-fill: #7f8c8d; -fx-font-size: 12px;" wrapText="true" textAlignment="CENTER"/>
+</VBox>
+
+<HBox spacing="15" alignment="CENTER">
+<Button fx:id="cancelButton" text="Hủy bỏ" onAction="#onCancel"
+style="-fx-background-color: white; -fx-text-fill: #7f8c8d; -fx-border-color: #bdc3c7; -fx-border-radius: 5; -fx-background-radius: 5; -fx-cursor: hand; -fx-padding: 8 20;" />
+
+<Button fx:id="confirmButton" text="Đồng ý" onAction="#onConfirm" defaultButton="true"
+style="-fx-background-color: #e67e22; -fx-text-fill: white; -fx-background-radius: 5; -fx-cursor: hand; -fx-font-weight: bold; -fx-padding: 8 20;" />
+</HBox>
+</VBox>
+</VBox>

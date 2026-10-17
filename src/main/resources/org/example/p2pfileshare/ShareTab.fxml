@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<BorderPane xmlns="http://javafx.com/javafx"
+            xmlns:fx="http://javafx.com/fxml"
+            fx:controller="org.example.p2pfileshare.controller.ShareTabController">
+
+    <padding>
+        <Insets top="10" right="10" bottom="10" left="10"/>
+    </padding>
+
+    <top>
+        <VBox spacing="8">
+            <children>
+                <HBox spacing="10">
+                    <children>
+                        <Label text="Thư mục chia sẻ:"/>
+                        <TextField fx:id="shareFolderField" prefWidth="300" editable="false"/>
+                        <Button text="Chọn..." onAction="#onChooseFolder"/>
+                        <Button text="Quét lại" onAction="#onRefreshSharedFiles"/>
+                    </children>
+                </HBox>
+                <HBox spacing="10">
+                    <children>
+                        <Button text="Thêm tài liệu..." onAction="#onAddSharedFile"/>
+                        <Button text="Xóa tài liệu" onAction="#onRemoveSharedFile"/>
+                    </children>
+                </HBox>
+            </children>
+        </VBox>
+    </top>
+
+    <center>
+        <TableView fx:id="sharedFileTable">
+            <columns>
+                <TableColumn fx:id="colSharedName" text="Tên file (đường dẫn)" prefWidth="260"/>
+                <TableColumn fx:id="colSharedType" text="Loại" prefWidth="80"/>
+                <TableColumn fx:id="colSharedSize" text="Kích thước" prefWidth="100"/>
+                <TableColumn fx:id="colSharedSubject" text="Môn học" prefWidth="120"/>
+                <TableColumn fx:id="colSharedTags" text="Tag" prefWidth="150"/>
+                <TableColumn fx:id="colSharedVisibility" text="Chia sẻ" prefWidth="80"/>
+            </columns>
+        </TableView>
+    </center>
+
+</BorderPane>

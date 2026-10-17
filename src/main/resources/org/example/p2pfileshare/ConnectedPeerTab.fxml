@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<AnchorPane xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="org.example.p2pfileshare.controller.ConnectedPeerController"
+            style="-fx-background-color: #f8f9fa;">
+
+    <VBox spacing="15" AnchorPane.topAnchor="15.0" AnchorPane.bottomAnchor="15.0" AnchorPane.leftAnchor="15.0" AnchorPane.rightAnchor="15.0">
+
+        <HBox spacing="15" alignment="CENTER_LEFT" style="-fx-background-color: white; -fx-padding: 10 15; -fx-background-radius: 8; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.05), 5, 0, 0, 1);">
+            <Label text="🌐" style="-fx-font-size: 20px;" />
+            <HBox spacing="5" alignment="CENTER_LEFT">
+                <Label text="Peer:" style="-fx-font-weight: bold; -fx-text-fill: #7f8c8d;" />
+                <Label fx:id="peerNameLabel" text="..." style="-fx-font-weight: bold; -fx-text-fill: #2c3e50;" />
+            </HBox>
+
+            <Region HBox.hgrow="ALWAYS" />
+
+            <Button text="Reload" onAction="#onReload" styleClass="button" style="-fx-background-color: #3498db;" />
+            <Button text="Ngắt kết nối" onAction="#onDisconnect" styleClass="button, danger" />
+        </HBox>
+
+        <TableView fx:id="fileTable" VBox.vgrow="ALWAYS">
+            <columns>
+                <TableColumn fx:id="colName" text="Tên file" prefWidth="300" />
+                <TableColumn fx:id="colSize" text="Kích thước" prefWidth="120" style="-fx-alignment: CENTER;" />
+                <TableColumn fx:id="colRelative" text="Đường dẫn" prefWidth="250" />
+            </columns>
+            <columnResizePolicy>
+                <TableView fx:constant="CONSTRAINED_RESIZE_POLICY" />
+            </columnResizePolicy>
+            <placeholder>
+                <Label text="Không có file nào được chia sẻ hoặc chưa load." />
+            </placeholder>
+        </TableView>
+
+        <VBox spacing="10" style="-fx-background-color: white; -fx-padding: 15; -fx-background-radius: 8; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.05), 5, 0, 0, 1);">
+
+            <HBox spacing="10" alignment="CENTER_LEFT">
+                <Label text="Tiến trình:" style="-fx-font-weight: bold; -fx-text-fill: #95a5a6; -fx-font-size: 11px;" />
+                <ProgressBar fx:id="progress" prefWidth="400" progress="0.0" HBox.hgrow="ALWAYS" style="-fx-accent: #2ecc71;" />
+                <Label fx:id="statusLabel" text="Sẵn sàng" style="-fx-text-fill: #7f8c8d; -fx-font-style: italic; -fx-font-size: 11px;" minWidth="100" alignment="CENTER_RIGHT"/>
+            </HBox>
+
+            <Separator />
+
+            <HBox spacing="10" alignment="CENTER_LEFT">
+                <Button fx:id="btnDownload" text="⬇ Tải xuống" onAction="#onDownloadSelected"
+                        styleClass="button" style="-fx-background-color: #3498db; -fx-font-weight: bold;" />
+
+                <Region HBox.hgrow="ALWAYS" /> <Button fx:id="btnPause" text="⏸ Tạm dừng" onAction="#onPauseDownload" disable="true"
+                                                       styleClass="button, secondary" />
+
+                <Button fx:id="btnResume" text="▶ Tiếp tục" onAction="#onResumeDownload" disable="true"
+                        styleClass="button" style="-fx-background-color: #27ae60;" />
+
+                <Button fx:id="btnCancel" text="⏹ Hủy bỏ" onAction="#onCancelDownload" disable="true"
+                        styleClass="button, danger" />
+            </HBox>
+        </VBox>
+
+    </VBox>
+</AnchorPane>

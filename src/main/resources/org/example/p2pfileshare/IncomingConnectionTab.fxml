@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<AnchorPane xmlns="http://javafx.com/javafx/17"
+            xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="org.example.p2pfileshare.controller.IncomingConnectionController"
+            style="-fx-background-color: #f8f9fa;">
+
+    <VBox spacing="15" AnchorPane.topAnchor="20" AnchorPane.leftAnchor="20" AnchorPane.rightAnchor="20" AnchorPane.bottomAnchor="20">
+
+        <HBox spacing="10" alignment="CENTER_LEFT" style="-fx-background-color: white; -fx-padding: 10; -fx-background-radius: 8; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.05), 5, 0, 0, 1);">
+            <Label text="📡" style="-fx-font-size: 24px;" />
+            <VBox>
+                <Label text="Quản lý kết nối đến" style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;" />
+                <Label text="Các peer đang kết nối và xem file của bạn" style="-fx-font-size: 12px; -fx-text-fill: #7f8c8d;" />
+            </VBox>
+            <Region HBox.hgrow="ALWAYS" />
+            <Button fx:id="refreshButton" text="🔄 Làm mới" onAction="#onRefresh" styleClass="button, secondary" />
+        </HBox>
+
+        <TableView fx:id="connectedPeerTable" VBox.vgrow="ALWAYS">
+            <columns>
+                <TableColumn fx:id="colDisplayName" text="Tên hiển thị" prefWidth="150" />
+                <TableColumn fx:id="colIp" text="Địa chỉ IP" prefWidth="150" style="-fx-alignment: CENTER;" />
+                <TableColumn fx:id="colConnectTime" text="Thời gian kết nối" prefWidth="180" style="-fx-alignment: CENTER;" />
+                <TableColumn fx:id="colPeerId" text="Peer ID" prefWidth="250" />
+            </columns>
+            <columnResizePolicy>
+                <TableView fx:constant="CONSTRAINED_RESIZE_POLICY" />
+            </columnResizePolicy>
+            <placeholder>
+                <Label text="Hiện chưa có ai kết nối đến máy bạn" style="-fx-text-fill: #bdc3c7;" />
+            </placeholder>
+        </TableView>
+
+        <HBox spacing="10" alignment="CENTER_LEFT" style="-fx-background-color: white; -fx-padding: 10; -fx-background-radius: 8;">
+            <Label text="Trạng thái:" style="-fx-font-weight: bold; -fx-text-fill: #7f8c8d;" />
+            <Label fx:id="statusLabel" text="Sẵn sàng" style="-fx-text-fill: #27ae60; -fx-font-weight: bold;" />
+            <Region HBox.hgrow="ALWAYS" />
+            <Button fx:id="disconnectButton" text="🚫 Ngắt kết nối" onAction="#onDisconnect" styleClass="button, danger" />
+        </HBox>
+
+    </VBox>
+</AnchorPane>
