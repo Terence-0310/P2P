@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<VBox xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="org.example.p2pfileshare.controller.ChangeNameController"
+      spacing="0" alignment="TOP_CENTER"
+      stylesheets="@styles.css"
+      style="-fx-background-color: white; -fx-pref-width: 420px; -fx-border-color: #a29bfe; -fx-border-width: 1; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.15), 15, 0, 0, 0);">
+
+    <!-- Header Gradient -->
+    <HBox styleClass="header-gradient" spacing="15" alignment="CENTER_LEFT" style="-fx-padding: 20 25;">
+        <Label text="👤" style="-fx-text-fill: white; -fx-font-size: 32px;" />
+        <VBox spacing="2">
+            <Label text="Thiết lập danh tính" style="-fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 18px;" />
+            <Label text="Tên hiển thị công khai trên mạng LAN" style="-fx-text-fill: rgba(255,255,255,0.9); -fx-font-size: 13px;" />
+        </VBox>
+    </HBox>
+
+    <VBox spacing="20" style="-fx-padding: 25 30;">
+        <VBox spacing="8">
+            <Label text="Tên hiển thị của bạn:" style="-fx-font-weight: bold; -fx-text-fill: #34495e; -fx-font-size: 14px;" />
+            
+            <TextField fx:id="nameField" promptText="Ví dụ: Máy của Kiệt..." 
+                       styleClass="text-field" style="-fx-font-size: 14px;" />
+                       
+            <Label text="Gợi ý: Dùng tên ngắn gọn, dễ nhận biết." style="-fx-text-fill: #95a5a6; -fx-font-size: 12px; -fx-font-style: italic;" />
+        </VBox>
+
+        <HBox spacing="10" alignment="CENTER_RIGHT" style="-fx-padding: 10 0 0 0;">
+            <Button fx:id="cancelButton" text="Hủy bỏ" onAction="#onCancel"
+                    styleClass="button, outline" />
+            <Button fx:id="saveButton" text="Lưu thay đổi" onAction="#onSave" defaultButton="true"
+                    styleClass="button" />
+        </HBox>
+    </VBox>
+</VBox>

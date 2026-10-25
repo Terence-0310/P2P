@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<BorderPane xmlns="http://javafx.com/javafx/17"
+            xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="org.example.p2pfileshare.controller.RootController"
+            stylesheets="@styles.css"
+            prefWidth="1000" prefHeight="700">
+
+    <top>
+        <HBox spacing="15" alignment="CENTER_LEFT" style="-fx-background-color: #2c3e50; -fx-padding: 10 20;">
+            <Label text="P2P SHARING" style="-fx-text-fill: white; -fx-font-size: 18px; -fx-font-weight: bold;" />
+            <Label text="LAN File Transfer" style="-fx-text-fill: #bdc3c7; -fx-font-size: 12px; -fx-font-style: italic;" />
+
+            <Region HBox.hgrow="ALWAYS" />
+
+            <HBox spacing="10" alignment="CENTER" style="-fx-background-color: rgba(255,255,255,0.1); -fx-padding: 5 15; -fx-background-radius: 20;">
+                <Label text="👤" style="-fx-text-fill: white; -fx-font-size: 16px;" />
+                <Label fx:id="userNameLabel" text="Loading..." style="-fx-text-fill: white; -fx-font-weight: bold;" />
+
+                <Button text="✎" onAction="#onChangeName"
+                        style="-fx-background-color: transparent; -fx-text-fill: white; -fx-cursor: hand; -fx-font-size: 14px; -fx-padding: 0 5;">
+                    <tooltip><Tooltip text="Đổi tên hiển thị" /></tooltip>
+                </Button>
+            </HBox>
+
+            <Separator orientation="VERTICAL" />
+
+            <Button text="❓ Giới thiệu" onAction="#onAbout" styleClass="button, secondary" style="-fx-background-color: rgba(255,255,255,0.2); -fx-text-fill: white; -fx-border-color: transparent;" />
+            <Button text="⏻ Thoát" onAction="#onExit" styleClass="button, danger" />
+        </HBox>
+    </top>
+
+    <center>
+        <TabPane fx:id="mainTabPane"
+                 tabClosingPolicy="ALL_TABS"
+                 style="-fx-background-color: #f8f9fa;">
+
+            <tabs>
+                <Tab text="🌐 Mạng LAN" closable="false">
+                    <content>
+                        <fx:include source="PeerTab.fxml" fx:id="peerTab" />
+                    </content>
+                </Tab>
+
+                <Tab text="📂 Tài liệu chia sẻ" closable="false">
+                    <content>
+                        <fx:include source="ShareTab.fxml" fx:id="shareTab" />
+                    </content>
+                </Tab>
+
+                <Tab text="🔍 Tìm kiếm" closable="false">
+                    <content>
+                        <fx:include source="SearchTab.fxml" fx:id="searchTab" />
+                    </content>
+                </Tab>
+
+                <Tab text="🕒 Lịch sử tải" closable="false">
+                    <content>
+                        <fx:include source="HistoryTab.fxml" fx:id="historyTab" />
+                    </content>
+                </Tab>
+                <Tab text="📡 Kết nối đến" closable="false">
+                    <content>
+                        <fx:include source="IncomingConnectionTab.fxml" fx:id="incomingConnectionTab" />
+                    </content>
+                </Tab>
+            </tabs>
+        </TabPane>
+
+    </center>
+
+    <bottom>
+        <HBox spacing="10" alignment="CENTER_LEFT" style="-fx-background-color: #ecf0f1; -fx-padding: 5 15; -fx-border-color: #bdc3c7; -fx-border-width: 1 0 0 0;">
+            <Label text="Trạng thái:" style="-fx-text-fill: #7f8c8d; -fx-font-weight: bold;" />
+            <Label fx:id="globalStatusLabel" text="Sẵn sàng" style="-fx-text-fill: #2c3e50;" />
+
+            <Region HBox.hgrow="ALWAYS" />
+
+            <Label text="P2P App v2.0" style="-fx-text-fill: #bdc3c7; -fx-font-size: 11px;" />
+        </HBox>
+    </bottom>
+
+</BorderPane>
