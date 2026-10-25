@@ -129,11 +129,11 @@ Nhóm 12, lớp 23DTHA6, học phần Lập trình mạng máy tính.
 
 | MSSV | Họ và tên | Công việc đã thực hiện | Merge Requests |
 |---|---|---|---|
-| 2280602799 | Nguyễn Đức Anh Tài | Khám phá peer bằng UDP Multicast; quản lý repository, tổng hợp báo cáo | … |
+| 2280602799 | Nguyễn Đức Anh Tài | Kiến trúc và giao thức 3 kênh; khám phá peer UDP Multicast; truyền file theo chunk; tích hợp hệ thống | … |
 | 2380602094 | Trịnh Danh Thi | Kênh điều khiển TCP: kết nối, cấp quyền, ngắt kết nối | … |
-| 2380600546 | Trần Hồng Đức | Truyền file theo chunk, SHA-256, tải song song, tạm dừng/tiếp tục | … |
-| 2380602377 | Trần Anh Trung | Giao diện JavaFX, lịch sử tải xuống, đồng bộ danh sách file | … |
-| 2380601944 | Lê Tấn Tài | Tìm kiếm, phân loại, tóm tắt tài liệu; kiểm thử JUnit | … |
+| 2380600546 | Trần Hồng Đức | Tìm kiếm file trên nhiều peer, đồng bộ danh sách file | … |
+| 2380602377 | Trần Anh Trung | Giao diện JavaFX, lịch sử tải xuống | … |
+| 2380601944 | Lê Tấn Tài | Phân loại, tóm tắt tài liệu; kiểm thử JUnit | … |
 
 ---
 
