@@ -64,4 +64,12 @@ class PeerDiscoveryTest {
         assertEquals(5000, peer.getFileServerPort());
         assertEquals(6000, peer.getControlPort());
     }
+
+    @Test
+    void nullOrMultilineDisplayNameIsSanitized() {
+        assertEquals("", PeerDiscovery.parseResponse(
+                PeerDiscovery.buildResponse("id-1", null, 5000, 6000), IP).getDisplayName());
+        assertEquals("Máy A", PeerDiscovery.parseResponse(
+                PeerDiscovery.buildResponse("id-1", "Máy\nA", 5000, 6000), IP).getDisplayName());
+    }
 }
