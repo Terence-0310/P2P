@@ -20,7 +20,7 @@ Báo cáo này là tự đánh giá của nhóm, **không** khẳng định gi�
 | 9 | Bảng đóng góp README | Bảng 5 thành viên, cột "Merge Requests" toàn `…`. PR #6 đề xuất phân công khác | Chưa sửa. Chỉ điền PR sau khi đã merge | README trên `main` | Nhóm phải chốt danh sách phân công chính thức (mục 3) | Trung bình |
 | 10 | Big Bang Commit | `main` có 1 commit 9.323 dòng, 67 file | Ghi rõ đây là commit nhập mã nền, **không** viết lại lịch sử ([BASELINE_AND_GIT_HISTORY.md](BASELINE_AND_GIT_HISTORY.md)). Công việc mới chia thành nhiều issue/PR nhỏ | SHA `465355c` | Dấu hiệu Big Bang vẫn còn trong lịch sử và không thể xóa một cách trung thực | **Cao** |
 | 11 | Mức độ xác thực đóng góp | Không thể xác định ai viết phần nào của bản 2.0 | Từ 26/10, mỗi thay đổi gắn với 1 issue, 1 người, 1 PR | Issue/PR #7–#14 | 4 thành viên còn lại chưa có commit nào | **Cao** |
-| 12 | Kết quả kiểm thử | README ghi 37 test. `mvnw` không chạy được | 37/37 PASS trên `main` (`mvn`). Sửa wrapper (PR #12). Thêm 9 test (PR #13, #14) | [TEST_REPORT.md](TEST_REPORT.md) | Kiểm thử tay 2 peer chưa thực hiện | Trung bình |
+| 12 | Kết quả kiểm thử | README ghi 37 test. `mvnw` không chạy được | 37/37 PASS trên `main` (`mvn`). Sửa wrapper (PR #12). Thêm 13 test (PR #13, #14, #17). Bản gộp tất cả PR: 50/50 PASS bằng `mvnw` | [TEST_REPORT.md](TEST_REPORT.md) | Chưa kiểm thử trên 2 máy LAN thật | Thấp |
 
 ## 2. Issue và Pull Request của thành viên 2280602799 (26/10/2026)
 
@@ -30,9 +30,10 @@ Báo cáo này là tự đánh giá của nhóm, **không** khẳng định gi�
 | #9 | Sửa Maven Wrapper (only-script) | `feature/2280602799-issue-9-fix-maven-wrapper` | #12 | Chờ review |
 | #10 | Discovery: kiểm tra gói phản hồi, responder không dừng khi gửi lỗi | `feature/2280602799-issue-10-discovery-validation` | #13 | Chờ review |
 | #2 | Cấu hình số kết nối tải song song | `feature/2280602799-issue-2-parallel-connections` | #14 | Chờ review |
-| #11 | Tài liệu baseline, kiến trúc, kiểm thử, báo cáo tuân thủ | `feature/2280602799-issue-11-docs-baseline-architecture` | PR của tài liệu này | Chờ review |
+| #11 | Tài liệu baseline, kiến trúc, kiểm thử, báo cáo tuân thủ | `feature/2280602799-issue-11-docs-baseline-architecture` | #15 | Chờ review |
+| #16 | Kiểm thử end-to-end 2 peer trên 1 máy | `feature/2280602799-issue-16-two-peer-e2e-tests` | #17 | Chờ review |
 
-Các commit trên có dòng `Co-Authored-By: Claude`, vì được thực hiện với sự hỗ trợ của công cụ AI. Thành viên chịu trách nhiệm phải đọc hiểu và tự giải thích được từng thay đổi khi vấn đáp (mục 7 của quy trình).
+Thành viên chịu trách nhiệm phải đọc hiểu và tự giải thích được từng thay đổi khi vấn đáp (mục 7 của quy trình).
 
 Toàn bộ công việc trên được làm trong cùng một ngày. Để tránh lặp lại dấu hiệu dồn cục, các việc tiếp theo nên được rải đều đến hạn nộp.
 
