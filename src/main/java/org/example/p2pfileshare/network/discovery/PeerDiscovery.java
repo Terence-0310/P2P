@@ -83,11 +83,7 @@ public class PeerDiscovery {
 //                        if (!DISCOVER_MSG.equals(msg)) continue;
 
                         if (DISCOVER_MSG.equals(msg)) {
-                            String response = RESPONSE_PREFIX + "|" +
-                                    myPeerId + "|" +
-                                    displayNameSupplier.get() + "|" +
-                                    filePort + "|" +
-                                    controlPort;
+                            String response = buildResponse(myPeerId, displayNameSupplier.get(), filePort, controlPort);
 
                             byte[] respData = response.getBytes(StandardCharsets.UTF_8);
 
@@ -97,7 +93,14 @@ public class PeerDiscovery {
                                     packet.getAddress(),
                                     packet.getPort()
                             );
-                            responderSocket.send(resp);
+                            try {
+                                responderSocket.send(resp);
+                            } catch (IOException sendError) {
+                                // lỗi gửi cho 1 peer (vd. NoRouteToHostException) không được làm dừng responder
+                                if (responderSocket.isClosed()) throw sendError;
+                                System.err.println("[Discovery] Cannot reply to " + packet.getAddress()
+                                        + ":" + packet.getPort() + ": " + sendError.getMessage());
+                            }
                         }
 
                     } catch (SocketException se) {
@@ -184,71 +187,36 @@ public class PeerDiscovery {
             byte[] buf = new byte[1024];
             long start = System.currentTimeMillis();
 
-            while (System.currentTimeMillis() - start < timeoutMillis) {
+            while (true) {
+                // chỉ chờ phần thời gian còn lại, để cả lần quét không vượt quá timeoutMillis
+                long remaining = timeoutMillis - (System.currentTimeMillis() - start);
+                if (remaining <= 0) break;
                 try {
+                    socket.setSoTimeout((int) remaining);
                     DatagramPacket resp = new DatagramPacket(buf, buf.length);
                     socket.receive(resp);
 
                     String msg = new String(resp.getData(), 0, resp.getLength(), StandardCharsets.UTF_8).trim();
-
-                    if (msg.startsWith(RESPONSE_PREFIX)) {
-                        // Format mới: P2P_DISCOVER_RESPONSE|peerId|displayName|filePort|controlPort
-                        String[] parts = msg.split("\\|");
-                        if (parts.length >= 5) {
-                            String peerId         = parts[1];
-                            String displayName    = parts[2];
-                            int peerFilePort      = Integer.parseInt(parts[3]);
-                            int peerControlPort   = Integer.parseInt(parts[4]);
-                            String ip             = resp.getAddress().getHostAddress();
-
-                            // Bỏ qua chính mình dựa trên peerId, và peer đã nhận phản hồi qua card khác
-                            if (peerId.equals(myPeerId) || result.containsKey(peerId)) {
-                                continue;
-                            }
-
-                            PeerInfo peer = new PeerInfo(
-                                    peerId,
-                                    displayName,
-                                    ip,
-                                    peerFilePort,
-                                    peerControlPort,
-                                    "Online"
-                            );
-                            result.put(peerId, peer);
-
-                            System.out.println("[Discovery] Found: " + displayName +
-                                    " ip: " + ip +
-                                    " filePort:" + peerFilePort +
-                                    " ctrlPort:" + peerControlPort +
-                                    " id:" + peerId);
-
-                        } else if (parts.length >= 4) {
-                            // Khoản hỗ trợ format cũ: P2P_DISCOVER_RESPONSE|name|filePort|controlPort
-                            String peerName      = parts[1];
-                            int peerFilePort     = Integer.parseInt(parts[2]);
-                            int peerControlPort  = Integer.parseInt(parts[3]);
-                            String ip            = resp.getAddress().getHostAddress();
-
-                            // Bỏ qua chính mình nếu myPeerId equals peerName fallback
-                            if (peerName.equals(myPeerId) || result.containsKey(peerName)) {
-                                continue;
-                            }
-
-                            PeerInfo peer = new PeerInfo(
-                                    peerName,
-                                    ip,
-                                    peerFilePort,
-                                    peerControlPort,
-                                    "Online"
-                            );
-                            result.put(peerName, peer);
-
-                            System.out.println("[Discovery] Found: " + peerName +
-                                    " ip:" + ip +
-                                    " filePort:" + peerFilePort +
-                                    " ctrlPort:" + peerControlPort);
+                    PeerInfo peer = parseResponse(msg, resp.getAddress().getHostAddress());
+                    if (peer == null) {
+                        if (msg.startsWith(RESPONSE_PREFIX)) {
+                            System.err.println("[Discovery] Ignored malformed response from "
+                                    + resp.getAddress().getHostAddress());
                         }
+                        continue;
                     }
+
+                    // Bỏ qua chính mình dựa trên peerId, và peer đã nhận phản hồi qua card khác
+                    if (peer.getPeerId().equals(myPeerId) || result.containsKey(peer.getPeerId())) {
+                        continue;
+                    }
+                    result.put(peer.getPeerId(), peer);
+
+                    System.out.println("[Discovery] Found: " + peer.getDisplayName() +
+                            " ip: " + peer.getIp() +
+                            " filePort:" + peer.getFileServerPort() +
+                            " ctrlPort:" + peer.getControlPort() +
+                            " id:" + peer.getPeerId());
                 } catch (SocketTimeoutException e) {
                     // hết thời gian đợi -> thoát vòng while
                     break;
@@ -262,6 +230,48 @@ public class PeerDiscovery {
         }
 
         return new ArrayList<>(result.values());
+    }
+
+    // Format: P2P_DISCOVER_RESPONSE|peerId|displayName|filePort|controlPort
+    // '|' là ký tự phân cách nên không được xuất hiện trong tên hiển thị
+    static String buildResponse(String peerId, String displayName, int filePort, int controlPort) {
+        String safeName = displayName == null ? "" : displayName.replace('|', '/');
+        return RESPONSE_PREFIX + "|" + peerId + "|" + safeName + "|" + filePort + "|" + controlPort;
+    }
+
+    /**
+     * Đọc gói phản hồi nhận từ mạng. Dữ liệu không tin cậy nên mọi lỗi định dạng đều trả về null
+     * thay vì ném exception làm hỏng cả lần quét.
+     * Hỗ trợ cả format cũ: P2P_DISCOVER_RESPONSE|name|filePort|controlPort
+     */
+    static PeerInfo parseResponse(String msg, String ip) {
+        if (msg == null || !msg.startsWith(RESPONSE_PREFIX + "|")) return null;
+        String[] parts = msg.split("\\|", -1);
+        try {
+            if (parts.length == 5) {
+                String peerId = parts[1];
+                int filePort = parsePort(parts[3]);
+                int controlPort = parsePort(parts[4]);
+                if (peerId.isBlank() || filePort < 0 || controlPort < 0) return null;
+                return new PeerInfo(peerId, parts[2], ip, filePort, controlPort, "Online");
+            }
+            if (parts.length == 4) {
+                String peerName = parts[1];
+                int filePort = parsePort(parts[2]);
+                int controlPort = parsePort(parts[3]);
+                if (peerName.isBlank() || filePort < 0 || controlPort < 0) return null;
+                return new PeerInfo(peerName, ip, filePort, controlPort, "Online");
+            }
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        return null;
+    }
+
+    // -1 nếu port nằm ngoài khoảng hợp lệ 1..65535
+    private static int parsePort(String s) {
+        int port = Integer.parseInt(s.trim());
+        return port >= 1 && port <= 65535 ? port : -1;
     }
 
     // Các card mạng đang bật, hỗ trợ multicast và có địa chỉ IPv4
