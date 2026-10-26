@@ -67,6 +67,30 @@ class ChunkedTransferTest {
     }
 
     @Test
+    void downloadsSameContentWithOneOrEightConnections(@TempDir Path share, @TempDir Path dest) throws Exception {
+        // 9 chunk: với 8 kết nối, nhiều worker cùng ghi vào 1 file .part
+        byte[] content = new byte[8 * 1024 * 1024 + 300 * 1024];
+        new Random(7).nextBytes(content);
+        Files.write(share.resolve("slide.pptx"), content);
+        int port = startServer(share);
+
+        for (int connections : new int[]{1, 8}) {
+            Path saveTo = dest.resolve(connections + "-slide.pptx");
+            assertTrue(ChunkedFileClient.downloadFile("127.0.0.1", port, ALLOWED_PEER, "slide.pptx", saveTo,
+                    null, new DownloadControl(), connections), "connections=" + connections);
+            assertArrayEquals(content, Files.readAllBytes(saveTo), "connections=" + connections);
+        }
+    }
+
+    @Test
+    void parallelConnectionsAreClampedToValidRange() {
+        assertEquals(1, ChunkedFileClient.clampParallelConnections(0));
+        assertEquals(1, ChunkedFileClient.clampParallelConnections(-5));
+        assertEquals(8, ChunkedFileClient.clampParallelConnections(8));
+        assertEquals(ChunkedFileClient.MAX_PARALLEL_CONNECTIONS, ChunkedFileClient.clampParallelConnections(100));
+    }
+
+    @Test
     void downloadsEmptyFile(@TempDir Path share, @TempDir Path dest) throws Exception {
         Files.write(share.resolve("empty.txt"), new byte[0]);
         int port = startServer(share);
