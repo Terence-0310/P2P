@@ -56,7 +56,11 @@ Gộp `main` với PR #8, #12, #13, #14, #15, #17 (không có xung đột), rồ
 | `util.UtilTest` | 5 | PASS |
 | **Tổng** | **50** | **50 PASS, 0 Failures, 0 Errors, 0 Skipped**, BUILD SUCCESS |
 
-Báo cáo HTML: `target/reports/surefire.html` (thư mục `target/` không commit). Sau khi merge thật vào `main`, cần chạy lại để xác nhận.
+Báo cáo HTML: `target/reports/surefire.html` (thư mục `target/` không commit).
+
+### Trên `main` sau khi merge (26/10/2026)
+
+Sau khi PR #8, #12, #13, #14, #15, #17, #19 được review và merge, chạy lại `.\mvnw.cmd -B clean test` trên `main`: `Tests run: 50, Failures: 0, Errors: 0, Skipped: 0`, BUILD SUCCESS. Kết quả khớp với bản gộp ở trên.
 
 ## 2. Kiểm thử tính năng mạng
 

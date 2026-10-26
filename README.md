@@ -137,13 +137,13 @@ Chi tiết xem [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Nhóm 12, lớp 23DTHA6, học phần Lập trình mạng máy tính.
 
-| MSSV | Họ và tên | Công việc đã thực hiện | Merge Requests |
+| MSSV | Họ và tên | Công việc đã thực hiện | Pull Request (đã merge) |
 |---|---|---|---|
-| 2280602799 | Nguyễn Đức Anh Tài | Kiến trúc và giao thức 3 kênh; khám phá peer UDP Multicast; truyền file theo chunk; tích hợp hệ thống | … |
-| 2380602094 | Trịnh Danh Thi | Kênh điều khiển TCP: kết nối, cấp quyền, ngắt kết nối | … |
-| 2380600546 | Trần Hồng Đức | Tìm kiếm file trên nhiều peer, đồng bộ danh sách file | … |
-| 2380602377 | Trần Anh Trung | Giao diện JavaFX, lịch sử tải xuống | … |
-| 2380601944 | Lê Tấn Tài | Phân loại, tóm tắt tài liệu; kiểm thử JUnit | … |
+| 2280602799 | Nguyễn Đức Anh Tài | Kiến trúc và giao thức 3 kênh; khám phá peer UDP Multicast; truyền file theo chunk; tích hợp hệ thống | #6, #8, #12, #13, #14, #15, #17, #19 |
+| 2380602094 | Trịnh Danh Thi | Kênh điều khiển TCP: kết nối, cấp quyền, ngắt kết nối | Chưa có |
+| 2380600546 | Trần Hồng Đức | Tìm kiếm file trên nhiều peer, đồng bộ danh sách file | Chưa có |
+| 2380602377 | Trần Anh Trung | Giao diện JavaFX, lịch sử tải xuống | Chưa có |
+| 2380601944 | Lê Tấn Tài | Phân loại, tóm tắt tài liệu; kiểm thử JUnit | Chưa có |
 
 ---
 
