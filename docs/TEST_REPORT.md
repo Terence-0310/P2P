@@ -36,22 +36,42 @@ Số test khớp với README ("Gồm 37 test"):
 | #12 | `feature/2280602799-issue-9-fix-maven-wrapper` | `.\mvnw.cmd -B clean test` (chưa có `~/.m2/wrapper`) và `sh ./mvnw -B test` | 37 PASS cả hai |
 | #13 | `feature/2280602799-issue-10-discovery-validation` | `mvn -B clean test` | 44 PASS (37 cũ và 7 test mới trong `PeerDiscoveryTest`) |
 | #14 | `feature/2280602799-issue-2-parallel-connections` | `mvn -B clean test` | 39 PASS (37 cũ và 2 test mới trong `ChunkedTransferTest`) |
+| #17 | `feature/2280602799-issue-16-two-peer-e2e-tests` | `mvn -B clean test`, và chạy riêng `-Dtest=TwoPeerEndToEndTest` 4 lần | 41 PASS (37 cũ và 4 test mới); 4/4 PASS cả 4 lần chạy riêng |
 
-Các nhánh được kiểm thử riêng rẽ, mỗi nhánh tách từ `main`. **Chưa** kiểm thử bản gộp cả ba. Sau khi merge cần chạy lại `.\mvnw.cmd clean test`; dự kiến có 46 test.
+### Bản gộp tất cả PR (nhánh tạm chỉ có trên máy, không push)
+
+Gộp `main` với PR #8, #12, #13, #14, #15, #17 (không có xung đột), rồi chạy `.\mvnw.cmd -B clean test surefire-report:report-only` (Maven Wrapper đã sửa, Maven 3.9.9):
+
+| Lớp test | Số test | Kết quả |
+|---|---|---|
+| `TwoPeerEndToEndTest` | 4 | PASS |
+| `network.control.ControlChannelTest` | 10 | PASS |
+| `network.discovery.PeerDiscoveryTest` | 7 | PASS |
+| `network.protocol.FileTransferProtocolTest` | 3 | PASS |
+| `network.transfer.ChunkedTransferTest` | 7 | PASS |
+| `service.DocumentSummaryServiceTest` | 4 | PASS |
+| `service.FileShareServiceTest` | 5 | PASS |
+| `service.SearchServiceTest` | 3 | PASS |
+| `service.SimpleAIServiceTest` | 2 | PASS |
+| `util.UtilTest` | 5 | PASS |
+| **Tổng** | **50** | **50 PASS, 0 Failures, 0 Errors, 0 Skipped**, BUILD SUCCESS |
+
+Báo cáo HTML: `target/reports/surefire.html` (thư mục `target/` không commit). Sau khi merge thật vào `main`, cần chạy lại để xác nhận.
 
 ## 2. Kiểm thử tính năng mạng
 
 | Tính năng | Có test tự động | Kiểm thử tay 2 peer |
 |---|---|---|
-| Discovery (UDP Multicast) | Chỉ phần phân tích gói tin (PR #13). Gửi/nhận multicast thật chưa có test | **Chưa thực hiện** |
-| Connect / Reject | Có (`ControlChannelTest`) | **Chưa thực hiện** |
+| Discovery (UDP Multicast) | Có: phân tích gói tin (PR #13); responder và quét multicast thật trên 1 máy, qua 3 card mạng (`TwoPeerEndToEndTest`, PR #17) | **Chưa thực hiện** |
+| Connect / Reject | Có (`ControlChannelTest`, `TwoPeerEndToEndTest`) | **Chưa thực hiện** |
 | Disconnect, kể cả khi peer đã tắt | Có (`ControlChannelTest`) | **Chưa thực hiện** |
-| Truyền file nhiều chunk | Có (`ChunkedTransferTest`) | **Chưa thực hiện** |
-| SHA-256 từng chunk và cả file | Gián tiếp: tải xong thì so khớp với file gốc | **Chưa thực hiện** |
-| Pause / Resume | Chưa có test tự động. Hủy có test (`cancelledDownloadCleansUpTempFiles`) | **Chưa thực hiện** |
-| Quyền truy cập (peer chưa được chấp nhận) | Có (`rejectsPeerThatWasNotAccepted` và các test control) | **Chưa thực hiện** |
+| Truyền file nhiều chunk | Có (`ChunkedTransferTest`, `TwoPeerEndToEndTest`) | **Chưa thực hiện** |
+| SHA-256 từng chunk và cả file | Có: so `FileHashUtil.sha256` của file tải về với file gốc (`TwoPeerEndToEndTest`) | **Chưa thực hiện** |
+| Pause / Resume | Có: tiến độ đứng yên khi tạm dừng, tiếp tục thì xong đúng hash (`TwoPeerEndToEndTest`). Hủy: `cancelledDownloadCleansUpTempFiles` | **Chưa thực hiện** |
+| Quyền truy cập (peer chưa được chấp nhận, bị chặn) | Có (`rejectsPeerThatWasNotAccepted`, các test control, `TwoPeerEndToEndTest`) | **Chưa thực hiện** |
 | Chặn `../` | Có (`blocksPathTraversal`) | Không cần |
-| Peer không phản hồi | Có một phần (ngắt kết nối với peer đã tắt) | **Chưa thực hiện** |
+| Tải tiếp sau khi bị gián đoạn | Có: bị chặn giữa chừng thì giữ `.part`/`.bitmap`, kết nối lại tải tiếp (`TwoPeerEndToEndTest`) |
+| Peer không phản hồi | Có một phần (ngắt kết nối với peer đã tắt). Chưa giả lập được "peer tắt máy giữa lúc tải" trong cùng tiến trình | **Chưa thực hiện** |
 
 ## 3. Kịch bản kiểm thử tay đề xuất (chưa chạy)
 
