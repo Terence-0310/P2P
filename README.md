@@ -123,6 +123,14 @@ Gồm 37 test, trong đó có integration test chạy server và client thật t
 
 **1.1**: bảo mật quyền truy cập, tải song song 4 kết nối, multicast trên mọi card mạng, sửa tóm tắt/UTF-8/tag/tìm kiếm, thêm test
 
+## Quy trình làm việc trên Git
+
+1. Cấu hình định danh: `git config user.name "MSSV_HoVaTen"` và `git config user.email "<email sinh viên>"`.
+2. Tạo Issue cho mỗi đầu việc, gán cho đúng 1 người, gắn label (`bug`, `enhancement`, `frontend`, `backend`, `test`, `refactor`, `documentation`) và milestone.
+3. Tạo nhánh từ `main`: `feature/<MSSV>-issue-<số>-<tên-ngắn>`, ví dụ `feature/2280602799-issue-7-pr-template`.
+4. Commit theo Conventional Commits: `feat:`, `fix:`, `refactor:`, `docs:`.
+5. Mở Pull Request theo mẫu, ghi `Closes #<số>`, đính kèm ảnh chụp màn hình; cần ít nhất 1 thành viên khác Approve. Nhánh `main` được bảo vệ, không push trực tiếp.
+
 ## Nhóm thực hiện
 
 Nhóm 12, lớp 23DTHA6, học phần Lập trình mạng máy tính.
