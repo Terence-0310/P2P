@@ -81,8 +81,10 @@ src/main/java/org/example/p2pfileshare/
 
 Yêu cầu JDK 17 trở lên.
 
-- **IntelliJ IDEA**: mở thư mục dự án và chạy `HelloApplication`
-- **Maven**: `mvn clean javafx:run` (hoặc `mvnw.cmd clean javafx:run` trên Windows)
+- **NetBeans**: *File → Open Project…* chọn thư mục dự án (NetBeans nhận ra dự án Maven), rồi bấm **Run Project** (F6). Debug (Ctrl+F5) cũng dùng được. Cấu hình nằm trong `nbactions.xml`.
+- **IntelliJ IDEA**: mở thư mục dự án và chạy lớp `Launcher`
+- **Maven**: `mvnw exec:java` (Windows: `.\mvnw.cmd exec:java`). Chạy được cả khi đường dẫn thư mục có dấu tiếng Việt.
+- `mvnw javafx:run` cũng chạy được, nhưng **chỉ khi đường dẫn thư mục không có dấu**: plugin truyền đường dẫn qua dòng lệnh, Windows làm mất ký tự có dấu và báo `InvalidPathException`.
 
 Có thể mở nhiều cửa sổ trên cùng một máy để thử, vì mỗi lần chạy app dùng cổng và `peerId` khác nhau. Nếu không tìm thấy peer, hãy kiểm tra Windows Firewall đã cho phép Java nhận kết nối trên mạng Private.
 
