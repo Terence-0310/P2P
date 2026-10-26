@@ -21,8 +21,9 @@ public class ChunkedFileClient {
     private static final int CONNECT_TIMEOUT_MS = 5000;
     private static final int SOCKET_TIMEOUT_MS = 8000;
     private static final int MAX_RETRIES = 3;
-    // Số kết nối TCP tải song song cho 1 file
-    private static final int PARALLEL_CONNECTIONS = 4;
+    // Số kết nối TCP tải song song cho 1 file (mặc định và giới hạn trên)
+    public static final int DEFAULT_PARALLEL_CONNECTIONS = 4;
+    public static final int MAX_PARALLEL_CONNECTIONS = 16;
 
     /**
      * Bước 1: Request metadata từ server (binary protocol)
@@ -88,6 +89,18 @@ public class ChunkedFileClient {
      */
     public static boolean downloadFile(String host, int port, String myPeerId, String fileName, Path saveTo,
                                        Consumer<Double> progressCallback, DownloadControl control) throws IOException {
+        return downloadFile(host, port, myPeerId, fileName, saveTo, progressCallback, control,
+                DEFAULT_PARALLEL_CONNECTIONS);
+    }
+
+    /**
+     * Như trên, nhưng chọn số kết nối song song. Giá trị được giới hạn trong 1..MAX_PARALLEL_CONNECTIONS:
+     * quá nhiều kết nối không nhanh hơn mà chỉ tốn luồng/socket ở cả hai phía.
+     */
+    public static boolean downloadFile(String host, int port, String myPeerId, String fileName, Path saveTo,
+                                       Consumer<Double> progressCallback, DownloadControl control,
+                                       int parallelConnections) throws IOException {
+        int connections = clampParallelConnections(parallelConnections);
 
         // Paths for resume
         // địa chỉ file tạm khi đang tải
@@ -136,7 +149,7 @@ public class ChunkedFileClient {
         }
 
         AtomicBoolean failed = new AtomicBoolean(false);
-        int workers = Math.max(1, Math.min(PARALLEL_CONNECTIONS, pending.size()));
+        int workers = Math.max(1, Math.min(connections, pending.size()));
         ExecutorService pool = Executors.newFixedThreadPool(workers, r -> {
             Thread t = new Thread(r, "chunk-worker-" + fileName);
             t.setDaemon(true);
@@ -334,6 +347,10 @@ public class ChunkedFileClient {
     }
 
     // ---------------- helpers: socket/meta/bitmap/part ----------------
+
+    static int clampParallelConnections(int requested) {
+        return Math.max(1, Math.min(MAX_PARALLEL_CONNECTIONS, requested));
+    }
 
     private static Socket openSocket(String host, int port) throws IOException {
         Socket socket = new Socket();
