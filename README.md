@@ -131,6 +131,8 @@ Gồm 37 test, trong đó có integration test chạy server và client thật t
 4. Commit theo Conventional Commits: `feat:`, `fix:`, `refactor:`, `docs:`.
 5. Mở Pull Request theo mẫu, ghi `Closes #<số>`, đính kèm ảnh chụp màn hình; cần ít nhất 1 thành viên khác Approve. Nhánh `main` được bảo vệ, không push trực tiếp.
 
+Chi tiết xem [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Nhóm thực hiện
 
 Nhóm 12, lớp 23DTHA6, học phần Lập trình mạng máy tính.
