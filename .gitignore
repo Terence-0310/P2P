@@ -24,6 +24,7 @@ target/
 ### NetBeans ###
 /nbproject/private/
 /nbbuild/
+bin/
 /dist/
 /nbdist/
 /.nb-gradle/
@@ -51,3 +52,10 @@ word/
 ### File nhị phân lớn ###
 *.jar
 *.zip
+
+### Node, biến môi trường, bí mật ###
+node_modules/
+.env
+.env.*
+*.pem
+*.key
