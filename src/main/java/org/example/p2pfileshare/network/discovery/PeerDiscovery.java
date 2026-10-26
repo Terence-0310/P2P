@@ -1,6 +1,7 @@
 package org.example.p2pfileshare.network.discovery;
 
 import org.example.p2pfileshare.model.PeerInfo;
+import org.example.p2pfileshare.network.control.ControlProtocol;
 
 import java.io.IOException;
 import java.net.*;
@@ -233,9 +234,9 @@ public class PeerDiscovery {
     }
 
     // Format: P2P_DISCOVER_RESPONSE|peerId|displayName|filePort|controlPort
-    // '|' là ký tự phân cách nên không được xuất hiện trong tên hiển thị
+    // '|' và xuống dòng không được xuất hiện trong tên hiển thị (cùng quy tắc với kênh điều khiển)
     static String buildResponse(String peerId, String displayName, int filePort, int controlPort) {
-        String safeName = displayName == null ? "" : displayName.replace('|', '/');
+        String safeName = ControlProtocol.sanitize(displayName);
         return RESPONSE_PREFIX + "|" + peerId + "|" + safeName + "|" + filePort + "|" + controlPort;
     }
 
