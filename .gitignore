@@ -47,3 +47,7 @@ download_history.json
 
 ### Tài liệu nộp riêng (Word) ###
 word/
+
+### File nhị phân lớn ###
+*.jar
+*.zip
