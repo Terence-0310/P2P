@@ -56,52 +56,7 @@ public class PeerService {
         return found;
     }
 
-    // tìm peer theo name
-    public PeerInfo getPeerFromName(String name) {
-        for (PeerInfo p : discoveredPeers) {
-            if (p.getName().equalsIgnoreCase(name)) {
-                return p;
-            }
-        }
-        return null;
-    }
-
-    // Lấy danh sách Peer, nếu chưa quét thì quét trước
-    public List<PeerInfo> getListPeer() {
-        if (discoveredPeers.isEmpty()) scanPeers();
-        return discoveredPeers;
-    }
-
-    // tìm peer theo id
-    public PeerInfo getPeerFromId(String peerId) {
-        for (PeerInfo p : discoveredPeers) {
-            if (p.getPeerId().equals(peerId)) {
-                return p;
-            }
-        }
-        return null;
-    }
-    public List<PeerInfo> getPeersByIds(List<String> connectedPeerIds) {
-        List<PeerInfo> result = new ArrayList<>();
-        if (connectedPeerIds == null || connectedPeerIds.isEmpty()) {
-            return result;
-        }
-
-        // đảm bảo đã scan peer
-        if (discoveredPeers.isEmpty()) {
-            scanPeers();
-        }
-
-        for (String id : connectedPeerIds) {
-            if (id == null) continue;
-            PeerInfo p = getPeerFromId(id);
-            if (p != null) {
-                result.add(p);
-            }
-        }
-        return result;
-    }
-    // lấy danh sách peer
+    // lấy danh sách peer tìm thấy ở lần quét gần nhất
     public List<PeerInfo> getDiscoveredPeers() {
         return discoveredPeers;
     }

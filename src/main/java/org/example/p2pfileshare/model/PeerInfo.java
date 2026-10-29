@@ -13,10 +13,7 @@ public class PeerInfo {
     private final String peerId;
 
     // Tên hiển thị do người dùng đặt (có thể trùng giữa các peer)
-    private  String displayName;
-
-    // Deprecated/kept for backward compatibility: getName() will return displayName
-    // private final String name;
+    private String displayName;
 
     private final String ip;
     private final int fileServerPort;   // port dùng để tải file
@@ -39,7 +36,7 @@ public class PeerInfo {
         this.connectionState = ConnectionState.NOT_CONNECTED;
     }
 
-    // Hỗ trợ constructor cũ (chỉ tên) — giả định tên nhập là displayName và peerId = name (không được dùng ở runtime)
+    // Gói discovery định dạng cũ không có peerId -> dùng tên làm peerId
     public PeerInfo(String name,
                     String ip,
                     int fileServerPort,
@@ -95,6 +92,7 @@ public class PeerInfo {
     public void setConnectionState(ConnectionState connectionState) {
         this.connectionState = connectionState;
     }
+
     public void setDisplayName(String displayName) {
         this.displayName = displayName;
     }

@@ -7,14 +7,9 @@ import javafx.concurrent.Task;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Node;
-import javafx.scene.Parent;
-import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.AnchorPane;
-import javafx.stage.Modality;
-import javafx.stage.Stage;
-import javafx.stage.StageStyle;
 import org.example.p2pfileshare.model.PeerInfo;
 import org.example.p2pfileshare.network.control.ControlClient;
 import org.example.p2pfileshare.network.control.ControlServer;
@@ -22,11 +17,9 @@ import org.example.p2pfileshare.service.FileShareService;
 import org.example.p2pfileshare.service.PeerService;
 
 import java.io.IOException;
-import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 public class PeerTabController {
 
@@ -34,23 +27,17 @@ public class PeerTabController {
     private FileShareService fileShareService;
     private ControlClient controlClient;
     private Label globalStatusLabel;
-    private ControlServer controlServer;
 
-    // map lưu nhiều controller, key = peerId
+    // tab kết nối đang mở và controller của nó, key = peerId (để đổi tên, chuyển tin nhắn hoặc đóng tab)
     private final Map<String, ConnectedPeerController> connectedControllers = new HashMap<>();
-   // map lưu tab đang mở để đổi tên hoặc xoá tab khi cần
-
     private final Map<String, Tab> connectedTabs = new HashMap<>();
+
     @FXML private TableView<PeerInfo> peerTable;
     @FXML private TableColumn<PeerInfo, String> colPeerName;
     @FXML private TableColumn<PeerInfo, String> colPeerIp;
     @FXML private TableColumn<PeerInfo, Number> colPeerPort;
     @FXML private TableColumn<PeerInfo, PeerInfo.ConnectionState> colPeerStatus;
     @FXML private Label peerStatusLabel;
-    @FXML private TabPane mainTabPane; // nếu không có trong FXML, có thể set từ RootController
-
-    @FXML private ProgressBar downloadProgress;
-    @FXML private Label downloadStatusLabel;
 
     private final ObservableList<PeerInfo> peerList = FXCollections.observableArrayList();
 
@@ -63,29 +50,17 @@ public class PeerTabController {
         this.peerService = peerService;
         this.fileShareService = fileShareService;
         this.controlClient = controlClient;
-        this.controlServer = controlServer;
         this.globalStatusLabel = globalStatusLabel;
 
         setupTable();
         onScanPeers();
 
-        // Lắng nghe cập nhật tên
-        if (this.controlServer != null) {
-            this.controlServer.setpeerUpdateName(() -> {
-                System.out.println("[IncomingConnection] Peer accepted → reload table");
-                Platform.runLater(this::onScanPeers);
-            });
-
-            // Lắng nghe tin nhắn hệ thống từ Server
-            this.controlServer.setOnSystemMessageReceived((senderId, msg) -> {
-                // Chuyển luồng về JavaFX Thread để an toàn cập nhật UI
-                Platform.runLater(() -> {
-                    this.routeSystemMessage(senderId, msg);
-                });
-            });
-        }
+        // peer đổi tên / ngắt kết nối với mình -> quét lại để cập nhật bảng
+        controlServer.setpeerUpdateName(() -> Platform.runLater(this::onScanPeers));
+        // tin nhắn hệ thống (vd. kho file thay đổi) -> chuyển cho tab kết nối tương ứng
+        controlServer.setOnSystemMessageReceived((senderId, msg) ->
+                Platform.runLater(() -> routeSystemMessage(senderId, msg)));
         controlServer.setOnRenameTab(this::renameConnectedTab);
-
     }
 
     private void setupTable() {
@@ -95,38 +70,37 @@ public class PeerTabController {
 
         // Hiển thị trạng thái kết nối thực tế thay vì "Online"
         colPeerStatus.setCellValueFactory(new PropertyValueFactory<>("connectionState"));
-        colPeerStatus.setCellFactory(column -> new TableCell<PeerInfo, PeerInfo.ConnectionState>() {
+        colPeerStatus.setCellFactory(column -> new TableCell<>() {
             @Override
             protected void updateItem(PeerInfo.ConnectionState state, boolean empty) {
                 super.updateItem(state, empty);
                 if (empty || state == null) {
                     setText(null);
                     setStyle("");
-                } else {
-                    switch (state) {
-                        case NOT_CONNECTED:
-                            setText("Chưa kết nối");
-                            setStyle("-fx-text-fill: #666666;");
-                            break;
-                        case PENDING:
-                            setText("Đang kết nối...");
-                            setStyle("-fx-text-fill: #ff9800; -fx-font-weight: bold;");
-                            break;
-                        case CONNECTED:
-                            setText("Đã kết nối");
-                            setStyle("-fx-text-fill: #4caf50; -fx-font-weight: bold;");
-                            break;
-                        case REJECTED:
-                            setText("Bị từ chối");
-                            setStyle("-fx-text-fill: #f44336;");
-                            break;
+                    return;
+                }
+                switch (state) {
+                    case NOT_CONNECTED -> {
+                        setText("Chưa kết nối");
+                        setStyle("-fx-text-fill: #666666;");
+                    }
+                    case PENDING -> {
+                        setText("Đang kết nối...");
+                        setStyle("-fx-text-fill: #ff9800; -fx-font-weight: bold;");
+                    }
+                    case CONNECTED -> {
+                        setText("Đã kết nối");
+                        setStyle("-fx-text-fill: #4caf50; -fx-font-weight: bold;");
+                    }
+                    case REJECTED -> {
+                        setText("Bị từ chối");
+                        setStyle("-fx-text-fill: #f44336;");
                     }
                 }
             }
         });
 
         peerTable.setItems(peerList);
-
     }
 
     // QUÉT PEER
@@ -162,9 +136,7 @@ public class PeerTabController {
             peerTable.setDisable(false);
         });
 
-        Thread t = new Thread(task, "scan-peers");
-        t.setDaemon(true);
-        t.start();
+        startDaemon(task, "scan-peers");
     }
 
     // sử dụng để refresh từ bên ngoài
@@ -177,7 +149,7 @@ public class PeerTabController {
     private void onConnectPeer() {
         PeerInfo peer = peerTable.getSelectionModel().getSelectedItem();
         if (peer == null) {
-            new Alert(Alert.AlertType.WARNING, "Vui lòng chọn peer để kết nối!").showAndWait();
+            Dialogs.error(peerTable, "Cảnh báo", "Hãy chọn peer trước!", "Vui lòng chọn peer để kết nối.");
             return;
         }
 
@@ -199,28 +171,23 @@ public class PeerTabController {
         };
 
         task.setOnSucceeded(e -> {
-            boolean ok = task.getValue();
-
-            if (ok) {
+            if (task.getValue()) {
                 peer.setConnectionState(PeerInfo.ConnectionState.CONNECTED);
                 peerStatusLabel.setText("Kết nối thành công!");
                 openConnectedTab(peer);
             } else {
                 peer.setConnectionState(PeerInfo.ConnectionState.REJECTED);
                 peerStatusLabel.setText("Peer từ chối hoặc không phản hồi");
-                showConfirmDialog("Kết nối thất bại", "Peer từ chối hoặc không phản hồi",
+                Dialogs.error(peerTable, "Kết nối thất bại", "Peer từ chối hoặc không phản hồi",
                         "Peer đã bấm Từ chối, không trả lời trong 60 giây, hoặc đã tắt ứng dụng. Hãy quét LAN lại rồi thử lại.");
             }
             peerTable.refresh();
         });
 
-        Thread t = new Thread(task, "connect-peer");
-        t.setDaemon(true);
-        t.start();
+        startDaemon(task, "connect-peer");
     }
 
     private TabPane findTabPane() {
-        if (mainTabPane != null) return mainTabPane;
         Node n = peerTable;
         while (n != null && !(n instanceof TabPane)) {
             n = n.getParent();
@@ -238,13 +205,18 @@ public class PeerTabController {
 
     // mở tab riêng
     private void openConnectedTab(PeerInfo peer) {
+        TabPane tabPane = findTabPane();
+        if (tabPane == null) {
+            Dialogs.error(peerTable, "Lỗi", null, "Không tìm thấy TabPane để mở tab mới.");
+            return;
+        }
+
         // tab cũ của lần kết nối trước (đã ngắt) -> đóng để không bị trùng
         Tab oldTab = connectedTabs.remove(peer.getPeerId());
         connectedControllers.remove(peer.getPeerId());
-        TabPane existingPane = findTabPane();
         if (oldTab != null) {
             if (oldTab.getUserData() instanceof ConnectedPeerController oldCtrl) oldCtrl.dispose();
-            if (existingPane != null) existingPane.getTabs().remove(oldTab);
+            tabPane.getTabs().remove(oldTab);
         }
 
         try {
@@ -255,32 +227,23 @@ public class PeerTabController {
             ConnectedPeerController controller = loader.getController();
             controller.init(peer, controlClient, fileShareService);
 
-            // đăng ký callback để khi ngắt kết nối thì cập nhật peerList và xoá mapping
+            // ngắt kết nối từ trong tab -> cập nhật trạng thái peer trong bảng (callback đã chạy trên JavaFX thread)
             controller.setOnDisconnected(() -> {
-                // chạy trên JavaFX thread
-                Platform.runLater(() -> {
-                    // Đặt trạng thái của peer trong danh sách về NOT_CONNECTED
-                    for (PeerInfo p : peerList) {
-                        if (peer.getPeerId().equals(p.getPeerId())) {
-                            p.setConnectionState(PeerInfo.ConnectionState.NOT_CONNECTED);
-                            break;
-                        }
+                for (PeerInfo p : peerList) {
+                    if (peer.getPeerId().equals(p.getPeerId())) {
+                        p.setConnectionState(PeerInfo.ConnectionState.NOT_CONNECTED);
+                        break;
                     }
-                    // Xoá controller mapping và cập nhật UI
-                    connectedControllers.remove(peer.getPeerId());
-                    if (peerTable != null) peerTable.refresh();
-                    if (peerStatusLabel != null) peerStatusLabel.setText("Đã ngắt kết nối: " + peer.getName());
-                });
+                }
+                peerTable.refresh();
+                peerStatusLabel.setText("Đã ngắt kết nối: " + peer.getName());
             });
 
             Tab tab = new Tab("Kết nối: " + peer.getName());
             tab.setContent(content);
             tab.setUserData(controller);
             tab.setClosable(true);
-
-            // lưu tab vào map để có thể đổi tên sau này
             connectedTabs.put(peer.getPeerId(), tab);
-            // đăng ký controller theo peerId để có thể cập nhật sau này
             connectedControllers.put(peer.getPeerId(), controller);
 
             // khi tab đóng thì xoá mapping (chỉ khi map vẫn trỏ tới đúng tab này)
@@ -289,28 +252,21 @@ public class PeerTabController {
                 connectedTabs.remove(peer.getPeerId(), tab);
                 controller.dispose();
             });
-            TabPane tabPane = findTabPane();
-            if (tabPane != null) {
-                tabPane.getTabs().add(tab);
-                tabPane.getSelectionModel().select(tab);
-            } else {
-                showConfirmDialog("Cảnh báo", null, "Không tìm thấy TabPane để mở tab mớ.");
-//                new Alert(Alert.AlertType.WARNING, "Không tìm thấy TabPane để mở tab mới").showAndWait();
-            }
+
+            tabPane.getTabs().add(tab);
+            tabPane.getSelectionModel().select(tab);
 
         } catch (IOException ex) {
-            showConfirmDialog("Lỗi", "Lỗi tải UI tab kết nối:", " " + ex.getMessage());
-//            new Alert(Alert.AlertType.ERROR, "Lỗi tải UI tab kết nối: " + ex.getMessage()).showAndWait();
+            Dialogs.error(peerTable, "Lỗi", "Lỗi tải UI tab kết nối:", ex.getMessage());
         }
     }
-
 
     // NGẮT KẾT NỐI
     @FXML
     private void onDisconnectPeer() {
         PeerInfo peer = peerTable.getSelectionModel().getSelectedItem();
         if (peer == null) {
-            showConfirmDialog("Cảnh báo", "Hãy chọn peer trước!", "Vui lòng chọn peer để kết nối.");
+            Dialogs.error(peerTable, "Cảnh báo", "Hãy chọn peer trước!", "Vui lòng chọn peer để ngắt kết nối.");
             return;
         }
 
@@ -322,13 +278,12 @@ public class PeerTabController {
             return;
         }
 
-        boolean confirmed = showConfirmDialog(
+        boolean confirmed = Dialogs.confirm(peerTable,
                 "🔌 Ngắt kết nối",
                 "Ngắt kết nối với " + peer.getName() + "?",
-                "Hành động này sẽ đóng tab chia sẻ file và dừng mọi tải xuống."
-        );
-
-        if (!confirmed) return; // Nếu chọn Hủy thì thoát
+                "Hành động này sẽ đóng tab chia sẻ file và dừng mọi tải xuống.",
+                "Đồng ý");
+        if (!confirmed) return;
 
         peerStatusLabel.setText("Đang ngắt kết nối...");
         peer.setConnectionState(PeerInfo.ConnectionState.PENDING);
@@ -337,23 +292,20 @@ public class PeerTabController {
         Task<Boolean> task = new Task<>() {
             @Override
             protected Boolean call() {
-                // Gọi ControlClient để gửi DISCONNECT_REQUEST tới peer
                 return controlClient.sendDisconnectRequest(peer);
             }
         };
 
         task.setOnSucceeded(e -> {
-            boolean ok = Boolean.TRUE.equals(task.getValue());
             // Phía mình luôn coi như đã ngắt, kể cả khi peer kia không phản hồi (đã tắt máy...)
             peer.setConnectionState(PeerInfo.ConnectionState.NOT_CONNECTED);
-            peerStatusLabel.setText(ok ? "Đã ngắt kết nối thành công"
+            peerStatusLabel.setText(Boolean.TRUE.equals(task.getValue())
+                    ? "Đã ngắt kết nối thành công"
                     : "Đã ngắt kết nối (peer không phản hồi)");
 
             // Nếu có tab kết nối đang mở, báo để cập nhật UI tab
             ConnectedPeerController ctrl = connectedControllers.get(peer.getPeerId());
-            if (ctrl != null) {
-                ctrl.onPeerDisconnected();
-            }
+            if (ctrl != null) ctrl.onPeerDisconnected();
             peerTable.refresh();
         });
 
@@ -363,85 +315,16 @@ public class PeerTabController {
             peerTable.refresh();
         });
 
-        new Thread(task, "disconnect-peer").start();
+        startDaemon(task, "disconnect-peer");
     }
 
-    private boolean showConfirmDialog(String title, String header, String content) {
-        try {
-            FXMLLoader loader = new FXMLLoader(getClass().getResource("/org/example/p2pfileshare/ConfirmationDialog.fxml"));
-            Parent page = loader.load();
-
-            Stage dialogStage = new Stage();
-            dialogStage.initStyle(StageStyle.UNDECORATED);
-            dialogStage.initModality(Modality.APPLICATION_MODAL);
-
-            if (peerTable.getScene() != null) {
-                dialogStage.initOwner(peerTable.getScene().getWindow());
-            }
-            dialogStage.setScene(new Scene(page));
-
-            ConfirmationController controller = loader.getController();
-            controller.setDialogStage(dialogStage);
-
-            // Nội dung & Style
-            controller.setContent(title, header, content, "Đồng ý");
-            controller.setStyleDanger(); // Màu đỏ
-
-            dialogStage.showAndWait();
-            return controller.isConfirmed();
-
-        } catch (IOException e) {
-            e.printStackTrace();
-            return false;
-        }
-    }
-
-    private void showSuccessDialog(String header, String content) {
-        try {
-            FXMLLoader loader = new FXMLLoader(getClass().getResource("/org/example/p2pfileshare/ConfirmationDialog.fxml"));
-            Parent page = loader.load();
-
-            Stage dialogStage = new Stage();
-            dialogStage.initStyle(StageStyle.UNDECORATED);
-            dialogStage.initModality(Modality.APPLICATION_MODAL);
-
-            if (peerTable.getScene() != null) {
-                dialogStage.initOwner(peerTable.getScene().getWindow());
-            }
-            dialogStage.setScene(new Scene(page));
-
-            ConfirmationController controller = loader.getController();
-            controller.setDialogStage(dialogStage);
-
-            // Nội dung & Style
-            controller.setContent("Thông báo", header, content, "Đóng");
-            controller.setStyleSuccess(); // Màu xanh
-
-            dialogStage.showAndWait();
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public void routeSystemMessage(String senderPeerId, String message) {
-        // 1. Tìm controller tương ứng với người gửi
+    private void routeSystemMessage(String senderPeerId, String message) {
         ConnectedPeerController targetController = connectedControllers.get(senderPeerId);
-
-        // 2. Nếu tìm thấy (tức là đang mở tab chat với người này)
         if (targetController != null) {
-            // Gọi hàm xử lý tin nhắn mà chúng ta vừa sửa lúc nãy
             targetController.receivedMessage(message);
         } else {
             System.out.println("Nhận tin từ " + senderPeerId + " nhưng không tìm thấy tab nào đang mở.");
         }
-    }
-
-    public List<PeerInfo> getActiveConnectedPeers() {
-        // Lấy danh sách các peer có trạng thái CONNECTED
-        return peerList.stream()
-                .filter(p -> p.getConnectionState() == PeerInfo.ConnectionState.CONNECTED)
-                .collect(Collectors.toList());
     }
 
     // gọi khi remote peer bị ngắt (hoặc khi muốn đặt trạng thái peer về "chưa kết nối")
@@ -457,41 +340,39 @@ public class PeerTabController {
                 if (peerId.equals(p.getPeerId())) {
                     p.setConnectionState(PeerInfo.ConnectionState.NOT_CONNECTED);
                     updated = true;
-                    if (peerStatusLabel != null) {
-                        peerStatusLabel.setText("Peer " + p.getName() + " đã bị ngắt kết nối");
-                    }
+                    peerStatusLabel.setText("Peer " + p.getName() + " đã bị ngắt kết nối");
                     break;
                 }
             }
 
-            // 2) tìm controller của tab tương ứng và gọi method để cập nhật UI tab nếu tab đang mở
+            // 2) cập nhật UI tab kết nối nếu đang mở
             ConnectedPeerController ctrl = connectedControllers.get(peerId);
-            if (ctrl != null) {
-                ctrl.onPeerDisconnected();
-            }
+            if (ctrl != null) ctrl.onPeerDisconnected();
 
-            // Nếu không tìm thấy controller thì peerList cũng đã được cập nhật
-            if (!updated) {
-                // reload toàn bộ peers từ service
-                refresh();
-            }
+            // peer chưa có trong bảng -> quét lại
+            if (!updated) refresh();
 
-            if (peerTable != null) peerTable.refresh();
+            peerTable.refresh();
         });
     }
 
     // đổi tên tab và update trên UI con
     public void renameConnectedTab(String peerId, String newName) {
         Platform.runLater(() -> {
+            PeerInfo connected = controlClient.getConnectedPeer(peerId);
+            if (connected != null) connected.setDisplayName(newName);
+
             Tab tab = connectedTabs.get(peerId);
-            if (tab != null) {
-                tab.setText("Kết nối: " + newName);
-            }
+            if (tab != null) tab.setText("Kết nối: " + newName);
 
             ConnectedPeerController ctrl = connectedControllers.get(peerId);
-            if (ctrl != null) {
-                ctrl.updatePeerDisplayName(newName);
-            }
+            if (ctrl != null) ctrl.updatePeerDisplayName(newName);
         });
+    }
+
+    private static void startDaemon(Task<?> task, String name) {
+        Thread t = new Thread(task, name);
+        t.setDaemon(true);
+        t.start();
     }
 }

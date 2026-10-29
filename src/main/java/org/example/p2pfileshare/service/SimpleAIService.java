@@ -3,14 +3,20 @@ package org.example.p2pfileshare.service;
 import java.text.Normalizer;
 import java.util.regex.Pattern;
 
+/**
+ * Đoán môn học / loại tài liệu từ tên file bằng từ khóa.
+ * Từ khóa dài (vd. "lap trinh mang") so khớp chuỗi con; từ khóa ngắn (vd. "se", "db", "lab") phải là
+ * 1 từ riêng, có thể kèm số phía sau ("lab11", "n3"), để "database" không bị hiểu là "se" hay "data".
+ */
 public class SimpleAIService {
 
     public String predictSubject(String fileName) {
         String normalized = removeAccents(fileName).toLowerCase();
 
         // 1. Lập trình mạng & Hệ thống
-        if (contain(normalized, "lap trinh mang", "ltm", "network", "socket", "tcp", "udp",
-                "multicast", "broadcast", "rmi", "giao thuc", "cs2004", "soa", "mo hinh", "p2p")) return "Lập trình mạng";
+        if (contain(normalized, "lap trinh mang", "network", "socket", "tcp", "udp",
+                "multicast", "broadcast", "giao thuc", "cs2004", "mo hinh", "p2p")
+                || containWord(normalized, "ltm", "rmi", "soa")) return "Lập trình mạng";
         if (contain(normalized, "lap trinh he thong", "laptrinhhethong","hethong", "system programming", "ltht")) return "Lập trình hệ thống";
         if (contain(normalized, "linux", "ubuntu", "centos", "open source", "nguon mo", "mini-devops")) return "Linux & PM Nguồn mở";
         if (contain(normalized, "kien truc may tinh", "computer architecture", "ktmt")) return "Kiến trúc máy tính";
@@ -19,15 +25,19 @@ public class SimpleAIService {
 
         // 2. Web & Mobile
         if (contain(normalized, "web", "php", "jsp", "servlet")) return "Công nghệ và lập trình Web";
-        if (contain(normalized, "di dong", "mobile", "android", "ios", "flutter", "react native")) return "Lập trình di động";
-        if (contain(normalized, "may chu", "server", "cloud", "aws", "azure", "google cloud")) return "Máy chủ & Điện toán đám mây";
+        if (contain(normalized, "di dong", "mobile", "android", "flutter", "react native")
+                || containWord(normalized, "ios")) return "Lập trình di động";
+        if (contain(normalized, "may chu", "server", "cloud", "azure", "google cloud")
+                || containWord(normalized, "aws")) return "Máy chủ & Điện toán đám mây";
         if (contain(normalized, "an ninh mang", "network security", "cyber security", "bao mat thong tin")) return "An ninh mạng";
 
         // 3. Công nghệ phần mềm & Phân tích
-        if (contain(normalized, "cong nghe phan mem", "cnpm", "se", "software eng", "extreme",
-                "software architecture", "sw processes", "se2022")) return "Công nghệ phần mềm";
+        if (contain(normalized, "cong nghe phan mem", "cnpm", "software eng", "extreme",
+                "software architecture", "sw processes") || containWord(normalized, "se")) return "Công nghệ phần mềm";
+        // "phân tích dữ liệu" phải kiểm tra trước "phân tích" (chung tiền tố)
+        if (contain(normalized, "phan tich du lieu", "data analysis", "analyst", "dataset", "visualization")
+                || containWord(normalized, "data")) return "Phân tích dữ liệu";
         if (contain(normalized, "phan tich", "thiet ke he thong", "uml", "design pattern") || normalized.endsWith(".mdj")) return "Phân tích & TK hệ thống";
-        if (contain(normalized, "phan tich du lieu", "data analysis", "analyst", "dataset", "data", "visualization")) return "Phân tích dữ liệu";
 
         // toán học
         if (contain(normalized, "giai tich", "giaitich", "calculus")) return "Giải tích";
@@ -35,13 +45,15 @@ public class SimpleAIService {
         if (contain(normalized, "vat ly", "physical")) return "Vật lý";
         // 4. Dữ liệu & Giải thuật
         if (contain(normalized, "cau truc du lieu", "giai thuat", "dsa", "algorithm")) return "CTDL & Giải thuật";
-        if (contain(normalized, "co so du lieu","cosodukieu","du-lieu", "csdl", "db", "sql", "mysql", "database") || normalized.endsWith(".sql")) return "Cơ sở dữ liệu";
-        if (contain(normalized, "do hoa may tinh", "computer graphics", "opengl", "graphics", "curver", "surface")|| containWord(normalized, "os", "cg", "2d", "3d")) return "Đồ họa máy tính";
+        if (contain(normalized, "co so du lieu", "cosodulieu", "du-lieu", "csdl", "sql", "database")
+                || containWord(normalized, "db", "dbms")) return "Cơ sở dữ liệu";
+        if (contain(normalized, "do hoa may tinh", "computer graphics", "opengl", "graphics", "curver", "surface")
+                || containWord(normalized, "cg", "2d", "3d")) return "Đồ họa máy tính";
         if (contain(normalized, "thamlam", "dophuctap", "chiadetri", "quyhoachdong", "quaylui", "dequy", "chungminhdungdan")) return "Phân tích & TK giải thuật";
         if (contain(normalized, "tri tue nhan tao", "minimax", "constraint", "genetic", "solving", "evolutionary", "ai4life")|| containWord(normalized, "ai")) return "Trí tuệ nhân tạo";
 
         // 5. Ngôn ngữ lập trình căn bản
-        if (contain(normalized, "java", "oop", "huong doi tuong")) return "Lập trình Java / OOP";
+        if (contain(normalized, "java", "huong doi tuong") || containWord(normalized, "oop")) return "Lập trình Java / OOP";
         if (contain(normalized, "lap trinh co ban", "nhap mon lap trinh", "cpp", "c++", "vong lap")) return "Lập trình cơ bản";
 
         if (contain(normalized, "do an co so","doancoso", "dacs", "do an")) {
@@ -58,7 +70,8 @@ public class SimpleAIService {
 
         if (contain(normalized, "tieng anh", "english", "toeic", "extract", "tacn")) return "Tiếng Anh";
         if (contain(normalized, "tieng nhat", "japanese", "nihongo", "sakubun", "furikaeri", "portfolio",
-                "choukai", "cvbank", "phieu phan tu", "genkou", "essay","katakana", "kanji", "jlpt", "n5", "n4", "n3", "n2", "n1")) return "Tiếng Nhật";
+                "choukai", "cvbank", "phieu phan tu", "genkou", "essay", "katakana", "kanji", "jlpt")
+                || containWord(normalized, "n5", "n4", "n3", "n2", "n1")) return "Tiếng Nhật";
 
         return "Khác";
     }
@@ -67,15 +80,16 @@ public class SimpleAIService {
         String lower = removeAccents(fileName).toLowerCase();
 
         // 1. Nhóm Báo cáo / Đồ án
-        if (contain(lower, "bao cao", "report", "do an", "tieuluan", "final", "examcise", "ex")) return "Báo cáo/Đồ án";
+        if (contain(lower, "bao cao", "report", "do an", "tieuluan", "final", "examcise")
+                || containWord(lower, "ex")) return "Báo cáo/Đồ án";
 
         // 2. Nhóm Bài tập / Lab
-        if (contain(lower, "lab", "bai tap", "exercise", "homework", "bt")) return "Bài tập/Lab";
+        if (contain(lower, "bai tap", "exercise", "homework") || containWord(lower, "lab", "bt")) return "Bài tập/Lab";
 
         // 3. Nhóm Học liệu
         if (contain(lower, "slide", "bai giang", "ly thuyet", "chapter", "chuong")) return "Slide/Bài giảng";
         if (contain(lower, "giao trinh", "sach", "book", "ebook")) return "Giáo trình";
-        if (contain(lower, "de thi", "exam", "midterm", "quiz", "trac nghiem")) return "Đề thi";
+        if (contain(lower, "de thi", "midterm", "quiz", "trac nghiem") || containWord(lower, "exam")) return "Đề thi";
         if (contain(lower, "xac suat thong ke", "giai tich", "dai so tuyen tinh", "toan roi rac")) return "Toán";
 
         // 4. Nhóm Source Code
@@ -87,7 +101,7 @@ public class SimpleAIService {
     }
 
     // Hàm kiểm tra chuỗi có chứa bất kỳ từ khóa nào không
-    public boolean contain(String input, String... keywords) {
+    private static boolean contain(String input, String... keywords) {
         for (String key : keywords) {
             if (input.contains(key)) {
                 return true;
@@ -98,17 +112,22 @@ public class SimpleAIService {
 
 
     // Hàm loại bỏ dấu tiếng Việt
-    private String removeAccents(String s) {
+    private static final Pattern DIACRITICS = Pattern.compile("\\p{InCombiningDiacriticalMarks}+");
+
+    private static String removeAccents(String s) {
         if (s == null) return "";
         String temp = Normalizer.normalize(s, Normalizer.Form.NFD);
-        Pattern pattern = Pattern.compile("\\p{InCombiningDiacriticalMarks}+");
-        return pattern.matcher(temp).replaceAll("").replace('đ', 'd').replace('Đ', 'D');
+        return DIACRITICS.matcher(temp).replaceAll("").replace('đ', 'd').replace('Đ', 'D');
     }
-    private boolean containWord(String input, String... words) {
+    // Có từ nào đúng bằng từ khóa không; từ khóa kết thúc bằng chữ cái thì cho phép số theo sau ("lab" khớp "lab11")
+    private static boolean containWord(String input, String... words) {
         String[] tokens = input.split("[^a-z0-9]+");
         for (String w : words) {
+            boolean allowDigits = Character.isLetter(w.charAt(w.length() - 1));
             for (String t : tokens) {
                 if (t.equals(w)) return true;
+                if (allowDigits && t.length() > w.length() && t.startsWith(w)
+                        && t.substring(w.length()).chars().allMatch(Character::isDigit)) return true;
             }
         }
         return false;

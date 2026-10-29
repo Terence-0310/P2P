@@ -51,14 +51,6 @@
             </placeholder>
         </TableView>
 
-<!--        <VBox spacing="5" style="-fx-background-color: white; -fx-padding: 10; -fx-background-radius: 8;">-->
-<!--            <Label text="Tiến trình hệ thống:" style="-fx-font-size: 11px; -fx-text-fill: #95a5a6; -fx-font-weight: bold;" />-->
-<!--            <HBox spacing="10" alignment="CENTER_LEFT">-->
-<!--                <ProgressBar fx:id="downloadProgress" prefWidth="300" progress="0.0" style="-fx-accent: #2ecc71;" />-->
-<!--                <Label fx:id="downloadStatusLabel" text="Sẵn sàng" style="-fx-text-fill: #7f8c8d; -fx-font-size: 12px;" />-->
-<!--            </HBox>-->
-<!--        </VBox>-->
-
     </VBox>
 
 </AnchorPane>

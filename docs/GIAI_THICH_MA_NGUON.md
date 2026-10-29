@@ -40,8 +40,8 @@ Tài liệu ôn tập cho buổi bảo vệ: giải thích từng phần code th
 |---|---|---|
 | Nhóm multicast | `230.0.0.1:8888` | `PeerDiscovery` |
 | Thời gian quét LAN | 3 giây | `PeerService.scanPeers` |
-| Cổng điều khiển | 7000–7999 (ngẫu nhiên) | `RootController.CONTROL_PORT` |
-| Cổng truyền file | 6000–6999 (ngẫu nhiên) | `RootController.FILE_PORT` |
+| Cổng điều khiển | 7000–7999 (cổng trống đầu tiên tìm được) | `RootController.CONTROL_PORT` |
+| Cổng truyền file | 6000–6999 (cổng trống đầu tiên tìm được) | `RootController.FILE_PORT` |
 | Kích thước khối | 1 MB | `ChunkedFileServer.DEFAULT_CHUNK_SIZE` |
 | Số kết nối tải song song | mặc định 4, cho phép 1–16 | `ChunkedFileClient` |
 | Số lần thử lại mỗi khối | 3 | `ChunkedFileClient.MAX_RETRIES` |
@@ -85,7 +85,7 @@ Tài liệu ôn tập cho buổi bảo vệ: giải thích từng phần code th
 | `network.control` | `ControlServer`, `ControlClient`, `ControlProtocol` |
 | `network.protocol` | `FileTransferProtocol` |
 | `network.transfer` | `ChunkedFileServer`, `ChunkedFileClient`, `DownloadControl` |
-| `model`, `util` | Dữ liệu (`PeerInfo`, `SharedFile`...) và tiện ích (`FileHashUtil`, `FolderWatcher`, `TransferStats`...) |
+| `model`, `util` | Dữ liệu (`PeerInfo`, `SharedFileLocal`...) và tiện ích (`FileHashUtil`, `FolderWatcher`, `TransferStats`, `PortFinder`...) |
 
 ---
 
@@ -95,7 +95,7 @@ Tài liệu ôn tập cho buổi bảo vệ: giải thích từng phần code th
 
 1. Hỏi tên hiển thị (lưu bằng `java.util.prefs.Preferences` qua `AppConfig`, lần sau không hỏi lại).
 2. Sinh `myPeerId = UUID.randomUUID()`. **Mỗi lần mở app là một peerId mới.**
-3. Chọn ngẫu nhiên `FILE_PORT = 6000 + random(1000)` và `CONTROL_PORT = 7000 + random(1000)`. Nhờ vậy mở được nhiều cửa sổ trên cùng một máy để thử.
+3. Chọn `FILE_PORT` trong 6000–6999 và `CONTROL_PORT` trong 7000–7999 bằng `PortFinder.findFreePort`: thử ngẫu nhiên vài cổng, rồi quét lần lượt cả khoảng, chỉ nhận cổng mở `ServerSocket` được. Nhờ vậy mở được nhiều cửa sổ trên cùng một máy mà không bao giờ trùng cổng.
 4. `PeerService.start()` → bật **responder multicast** để máy khác tìm thấy mình.
 5. Tạo `FileShareService` (server file), `ControlClient`, `ControlServer`.
 6. Nối quyền: `fileShareService.setAccessChecker(controlServer::isAccepted)`. Server file hỏi `ControlServer` xem peer đã được chấp nhận chưa.
@@ -171,7 +171,7 @@ LỆNH|từPeer|đếnPeer|ghiChú...
 ### 6.3 ControlServer xử lý thế nào
 
 - Luồng `control-server` chạy `ServerSocket.accept()` trong vòng lặp.
-- **Mỗi kết nối → 1 luồng `control-handler`** đọc 1 dòng, phân loại theo tiền tố hoặc tên lệnh.
+- **Mỗi kết nối được giao cho thread pool 32 luồng `control-handler`**, luồng đó đọc 1 dòng, phân loại theo tiền tố hoặc tên lệnh. Kết nối vượt quá 32 sẽ xếp hàng chờ thay vì tạo thêm luồng.
 - `setSoTimeout(15_000)`: client không gửi gì trong 15 s thì giải phóng luồng.
 
 ### 6.4 Kết nối có xác nhận (phần quan trọng)
@@ -337,7 +337,7 @@ public void checkpoint() throws InterruptedException {
 |---|---|
 | JavaFX Application Thread | Vẽ giao diện, xử lý bấm nút |
 | `discovery-responder` | Trả lời gói khám phá |
-| `control-server` + mỗi kết nối 1 `control-handler` | Kênh điều khiển |
+| `control-server` + pool 32 luồng `control-handler` | Kênh điều khiển |
 | `chunked-file-server` + pool 64 luồng | Phục vụ tải file |
 | `DownloadJob-*` + pool `chunk-worker-*` | Tải file |
 | `folder-watcher` + `folder-watcher-debounce` | Theo dõi thư mục |
@@ -438,8 +438,8 @@ Kênh điều khiển: mỗi thông điệp một dòng, kết thúc bằng xu�
 **H: `setSoTimeout` khác `connect(addr, timeout)` thế nào?**
 `connect(..., timeout)` giới hạn thời gian **thiết lập** kết nối. `setSoTimeout` giới hạn thời gian **chờ đọc** dữ liệu sau khi đã kết nối. Hết hạn thì ném `SocketTimeoutException`.
 
-**H: Vì sao cổng chọn ngẫu nhiên? Peer khác biết cổng bằng cách nào?**
-Để mở nhiều cửa sổ trên một máy mà không trùng cổng. Cổng được gửi trong gói phản hồi khám phá và trong `CONNECT_REQUEST`.
+**H: Cổng được chọn thế nào? Peer khác biết cổng bằng cách nào?**
+`PortFinder` tìm cổng còn trống trong khoảng cố định (thử mở `ServerSocket`, mở được thì cổng trống), để mở nhiều cửa sổ trên một máy mà không trùng cổng, và khoảng cổng vẫn khớp quy tắc firewall. Cổng được gửi trong gói phản hồi khám phá và trong `CONNECT_REQUEST`.
 
 ### Truyền file
 
@@ -475,8 +475,11 @@ JavaFX chỉ cho thay đổi giao diện trên JavaFX Application Thread. Luồn
 **H: Hộp thoại chấp nhận kết nối chạy ở luồng nào, luồng mạng chờ thế nào?**
 Hộp thoại hiện trên luồng giao diện qua `Platform.runLater`. Luồng mạng chờ bằng `CountDownLatch.await()`. Người dùng bấm xong thì `countDown()`, kết quả đọc từ `AtomicBoolean`.
 
-**H: Vì sao server file dùng thread pool mà server điều khiển tạo luồng mới cho mỗi kết nối?**
-Kết nối tải file sống lâu, có thể nhiều → giới hạn 64 luồng để không cạn tài nguyên. Kết nối điều khiển rất ngắn. Đây cũng là một hạn chế có thể cải tiến: dùng pool cho cả kênh điều khiển.
+**H: Vì sao cả hai server đều dùng thread pool?**
+Để số luồng có giới hạn dù bị nhiều kết nối dồn dập. Server file: 64 luồng (kết nối tải sống lâu). Server điều khiển: 32 luồng (lệnh ngắn, riêng `CONNECT_REQUEST` giữ luồng tới khi người dùng bấm Chấp nhận/Từ chối). Kết nối vượt quá sẽ xếp hàng chờ.
+
+**H: Metadata do peer khác gửi có tin được không?**
+Không. `ChunkedFileClient.validateMetadata` kiểm tra kích thước file ≥ 0, kích thước khối trong 1 byte–16 MB và số khối khớp với kích thước file trước khi cấp phát bộ nhớ theo các con số đó. Nếu không, một peer xấu gửi "2 tỷ khối" có thể làm app hết bộ nhớ.
 
 ### Bảo mật
 
@@ -506,8 +509,6 @@ Chọn PR #13 hoặc #14 (mục 13): nói vấn đề, cách sửa, test chứng
 | Chưa mã hóa, chưa xác thực peer | TLS + cặp khóa công khai |
 | Chỉ chạy trong LAN có multicast | Tracker / relay, NAT traversal |
 | Một file chỉ tải từ một peer | Tải từ nhiều peer cùng lúc như BitTorrent |
-| Cổng ngẫu nhiên, chưa thử lại khi trùng | Thử cổng khác khi bind lỗi |
-| Server điều khiển tạo luồng không giới hạn | Dùng thread pool |
 | Log bằng `System.out` | Dùng thư viện logging |
 | Tìm kiếm chỉ theo tên file, phân biệt dấu | Issue #5: tìm theo đường dẫn, bỏ dấu |
 | Chưa có CI | GitHub Actions chạy test cho mỗi PR |

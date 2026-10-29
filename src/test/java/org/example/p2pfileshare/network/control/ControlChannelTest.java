@@ -213,4 +213,27 @@ class ControlChannelTest {
         }
         fail("Server không khởi động được");
     }
+
+    @Test
+    void clientRemembersConnectedPeerInfoUntilDisconnect() {
+        assertTrue(client.getConnectedPeers().isEmpty());
+        assertTrue(client.sendConnectRequest(serverPeer));
+
+        // tab Tìm kiếm / đổi tên dùng thông tin này, không phải quét LAN lại
+        assertSame(serverPeer, client.getConnectedPeer(SERVER_ID));
+        assertEquals(List.of(serverPeer), client.getConnectedPeers());
+
+        assertTrue(client.sendDisconnectRequest(serverPeer));
+        assertNull(client.getConnectedPeer(SERVER_ID));
+        assertTrue(client.getConnectedPeers().isEmpty());
+    }
+
+    @Test
+    void acceptedPeerInfoIsAvailableById() {
+        assertNull(server.getAcceptedPeerInfo(CLIENT_ID));
+        assertTrue(client.sendConnectRequest(serverPeer));
+        PeerInfo info = server.getAcceptedPeerInfo(CLIENT_ID);
+        assertNotNull(info);
+        assertEquals(45678, info.getControlPort());
+    }
 }

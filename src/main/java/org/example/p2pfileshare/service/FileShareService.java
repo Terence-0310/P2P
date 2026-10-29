@@ -132,11 +132,6 @@ public class FileShareService {
         return target.toFile();
     }
 
-    // lưu lịch sử download
-    public List<DownloadHistory> listDownloadHistory() {
-        return historyService.loadHistory();
-    }
-
     // liệt kê file trong thư mục chia sẻ (kể cả thư mục con)
     public List<SharedFileLocal> listSharedFiles() {
         List<SharedFileLocal> result = new ArrayList<>();
