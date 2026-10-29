@@ -13,7 +13,7 @@ Bảng cổng và cú pháp lệnh của từng kênh có trong [README → Ki�
  └──────────────────────────────┘              └──────────────────────────────┘
 ```
 
-Mỗi lần chạy app, `RootController` chọn ngẫu nhiên cổng file (`6000 + random(1000)`) và cổng điều khiển (`7000 + random(1000)`), rồi quảng bá hai cổng này qua kênh discovery.
+Mỗi lần chạy app, `RootController` chọn cổng file (6000–6999) và cổng điều khiển (7000–7999) còn trống bằng `PortFinder.findFreePort`, rồi quảng bá hai cổng này qua kênh discovery.
 
 ## 1. Discovery: UDP Multicast (`network/discovery/PeerDiscovery`)
 
@@ -28,7 +28,7 @@ Tên hiển thị được lấy qua `Supplier`, nên đổi tên thì lần tr�
 
 | Thành phần | Luồng | Chi tiết |
 |---|---|---|
-| `ControlServer` | 1 luồng `accept`, mỗi kết nối 1 luồng riêng | Mỗi message là 1 dòng UTF-8 `LỆNH\|from\|to\|...` (`ControlProtocol.parse`). Socket phía server có `soTimeout` 15 s |
+| `ControlServer` | 1 luồng `accept` và thread pool 32 luồng `control-handler` | Mỗi message là 1 dòng UTF-8 `LỆNH\|from\|to\|...` (`ControlProtocol.parse`). Socket phía server có `soTimeout` 15 s |
 | `ControlClient` | Luồng của nơi gọi | Mỗi lệnh mở một kết nối mới: connect timeout 3 s, đọc 10 s; chờ người kia bấm Chấp nhận tối đa 60 s; tóm tắt file tối đa 60 s |
 
 **Quyền truy cập:** `ControlServer.acceptedPeers` (`ConcurrentHashMap.newKeySet()`) là nguồn duy nhất xác định peer nào đã được chấp nhận. `LIST_FILES`, `SEARCH_REQ`, `SUMMARIZE_REQ` và cả kênh file đều kiểm tra tập này. Ngắt kết nối hoặc chặn peer thì xóa peer khỏi tập trước, sau đó mới gửi `DISCONNECT_NOTIFY`. Nếu gửi thông báo thất bại (peer đã tắt), peer đó vẫn bị chặn.
@@ -52,7 +52,5 @@ Giá trị do người dùng nhập (tên hiển thị) đi qua `ControlProtocol
 
 | Giới hạn | Ảnh hưởng | Ghi chú |
 |---|---|---|
-| Cổng chọn ngẫu nhiên, không thử lại khi bị chiếm | Hiếm khi xảy ra, nhưng nếu trùng cổng thì server không khởi động | Có thể tạo issue riêng |
-| `ControlServer` tạo 1 luồng cho mỗi kết nối, không giới hạn | Bị nhiều kết nối dồn dập có thể tạo nhiều luồng | Mỗi lệnh điều khiển là một kết nối ngắn |
 | Multicast cần firewall cho phép Java trên mạng Private | Không tìm thấy peer | Có ghi trong README |
 | Log dùng `System.out` / `System.err` | Khó lọc log khi chẩn đoán lỗi | Chưa dùng thư viện logging |

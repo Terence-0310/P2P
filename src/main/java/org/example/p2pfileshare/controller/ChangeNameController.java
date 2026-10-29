@@ -3,16 +3,21 @@ package org.example.p2pfileshare.controller;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
+import javafx.scene.control.Button;
 import javafx.scene.control.TextField;
+import javafx.scene.paint.Color;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
+import javafx.stage.StageStyle;
 import javafx.stage.Window;
+import org.example.p2pfileshare.model.PeerInfo;
 import org.example.p2pfileshare.network.control.ControlClient;
 import org.example.p2pfileshare.network.control.ControlServer;
 import org.example.p2pfileshare.service.PeerService;
 import org.example.p2pfileshare.util.AppConfig;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -33,15 +38,11 @@ public class ChangeNameController {
     public static final String KEY_PEER_NAME = "peer_display_name";
 
     @FXML
-    private javafx.scene.control.Button cancelButton;
+    private Button cancelButton;
     @FXML
-    private javafx.scene.control.Button saveButton;
+    private Button saveButton;
 
     private boolean isLoginMode = false;
-
-    // ✅ BẮT BUỘC cho FXMLLoader
-    public ChangeNameController() {
-    }
 
     public void init(Stage stage,
             ControlClient controlClient,
@@ -99,9 +100,8 @@ public class ChangeNameController {
             // broadcast cho mọi peer đang kết nối (cả 2 chiều), chạy nền để không treo giao diện
             if (controlClient != null && controlServer != null && peerService != null) {
                 final String newName = result;
-                java.util.List<org.example.p2pfileshare.model.PeerInfo> targets =
-                        new java.util.ArrayList<>(controlServer.getAcceptedPeers(peerService.getDiscoveredPeers()));
-                for (var p : peerService.getPeersByIds(controlClient.getPeerIdList())) {
+                List<PeerInfo> targets = new ArrayList<>(controlServer.getAcceptedPeers(peerService.getDiscoveredPeers()));
+                for (PeerInfo p : controlClient.getConnectedPeers()) {
                     boolean exists = targets.stream().anyMatch(t -> t.getPeerId().equals(p.getPeerId()));
                     if (!exists) targets.add(p);
                 }
@@ -163,7 +163,7 @@ public class ChangeNameController {
 
             Scene scene = new Scene(loader.load());
             // Transparent scene nếu muốn bo góc đẹp
-            scene.setFill(javafx.scene.paint.Color.TRANSPARENT);
+            scene.setFill(Color.TRANSPARENT);
 
             ChangeNameController controller = loader.getController();
 
@@ -172,7 +172,7 @@ public class ChangeNameController {
             // Nếu là login màn hình đầu tiên (owner=null), ta dùng APPLICATION_MODAL hoặc
             // không set owner cũng được
             stage.initModality(Modality.APPLICATION_MODAL);
-            stage.initStyle(javafx.stage.StageStyle.TRANSPARENT); // Để bo góc đẹp
+            stage.initStyle(StageStyle.TRANSPARENT); // Để bo góc đẹp
 
             stage.setScene(scene);
 

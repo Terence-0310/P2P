@@ -1,25 +1,21 @@
 package org.example.p2pfileshare.controller;
 
 import javafx.application.Platform;
+import javafx.beans.binding.Bindings;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
-import javafx.fxml.FXMLLoader;
-import javafx.scene.Parent;
-import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
-import javafx.stage.Modality;
-import javafx.stage.Stage;
-import javafx.stage.StageStyle;
 import org.example.p2pfileshare.HelloApplication;
 import org.example.p2pfileshare.model.DownloadHistory;
 import org.example.p2pfileshare.service.HistoryService;
 
 import java.io.File;
-import java.io.IOException;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 public class HistoryTabController {
@@ -33,9 +29,6 @@ public class HistoryTabController {
     private final ObservableList<DownloadHistory> histories = FXCollections.observableArrayList();
     private final DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    // callback lắng nghe thay đổi
-    private Runnable historyChangeListener;
-
     public void init(HistoryService historyService, Label globalStatusLabel) {
         this.historyService = historyService;
         this.globalStatusLabel = globalStatusLabel;
@@ -44,17 +37,11 @@ public class HistoryTabController {
         // initial load
         refreshHistory();
 
-        // Đăng ký lắng nghe để tự động cập nhật UI khi file lịch sử thay đổi
-        if (this.historyService != null) {
-            historyChangeListener = () -> Platform.runLater(this::refreshHistory);
-            this.historyService.addHistoryChangeListener(historyChangeListener);
-            System.out.println("Đã đăng ký callback theo dõi file lịch sử.");
-        }
+        // tự động cập nhật bảng khi có lượt tải mới / xóa lịch sử
+        historyService.addHistoryChangeListener(() -> Platform.runLater(this::refreshHistory));
     }
 
-    public void setupTable() {
-        if (historyTable == null) return;
-
+    private void setupTable() {
         historyTable.setItems(histories);
         historyTable.getColumns().clear();
 
@@ -113,7 +100,7 @@ public class HistoryTabController {
             ContextMenu menu = new ContextMenu(openItem, folderItem, new SeparatorMenuItem(), removeItem);
 
             row.contextMenuProperty().bind(
-                    javafx.beans.binding.Bindings.when(row.emptyProperty())
+                    Bindings.when(row.emptyProperty())
                             .then((ContextMenu) null)
                             .otherwise(menu));
             return row;
@@ -127,7 +114,7 @@ public class HistoryTabController {
     private void openFile(DownloadHistory h) {
         if (h == null) return;
         if (!fileExists(h)) {
-            showSuccessDialog("Không tìm thấy file", "File đã bị xóa hoặc di chuyển:\n" + h.getSavedPath());
+            Dialogs.error(historyTable, "Thông báo", "Không tìm thấy file", "File đã bị xóa hoặc di chuyển:\n" + h.getSavedPath());
             return;
         }
         showDocument(new File(h.getSavedPath()));
@@ -137,7 +124,7 @@ public class HistoryTabController {
         if (h == null || h.getSavedPath() == null) return;
         File folder = new File(h.getSavedPath()).getParentFile();
         if (folder == null || !folder.isDirectory()) {
-            showSuccessDialog("Không tìm thấy thư mục", "Thư mục không còn tồn tại.");
+            Dialogs.error(historyTable, "Thông báo", "Không tìm thấy thư mục", "Thư mục không còn tồn tại.");
             return;
         }
         showDocument(folder);
@@ -160,107 +147,28 @@ public class HistoryTabController {
     }
 
     private void refreshHistory() {
-        if (historyService == null) return;
-        List<DownloadHistory> list = new java.util.ArrayList<>(historyService.listHistories());
+        List<DownloadHistory> list = new ArrayList<>(historyService.listHistories());
         // mới nhất lên đầu
-        list.sort(java.util.Comparator.comparing(DownloadHistory::getDownloadDate,
-                java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())));
+        list.sort(Comparator.comparing(DownloadHistory::getDownloadDate,
+                Comparator.nullsLast(Comparator.reverseOrder())));
         histories.setAll(list);
     }
 
     @FXML
     private void onClearHistory() {
-        if (historyService == null) return;
-
         if (histories.isEmpty()) {
-            // Nếu trống thì không cần xóa, chỉ báo nhẹ
             if (globalStatusLabel != null) globalStatusLabel.setText("Lịch sử đang trống.");
             return;
         }
 
-        try {
-            // 1. Load Dialog
-            FXMLLoader loader = new FXMLLoader(getClass().getResource("/org/example/p2pfileshare/ConfirmationDialog.fxml"));
-            Parent page = loader.load();
-
-            // 2. Tạo Stage không viền
-            Stage dialogStage = new Stage();
-            dialogStage.initStyle(StageStyle.UNDECORATED);
-            dialogStage.initModality(Modality.APPLICATION_MODAL);
-
-            if (historyTable.getScene() != null) {
-                dialogStage.initOwner(historyTable.getScene().getWindow());
-            }
-
-            dialogStage.setScene(new Scene(page));
-
-            // 3. Cấu hình Controller
-            ConfirmationController controller = loader.getController();
-            controller.setDialogStage(dialogStage);
-
-            // Thiết lập nội dung hiển thị dialog
-            controller.setContent(
-                    "🗑 Xóa lịch sử",
-                    "Bạn có muốn xóa toàn bộ " + histories.size() + " mục lịch sử không?",
-                    "Hành động này sẽ xóa danh sách nhật ký tải xuống vĩnh viễn.",
-                    "Xóa ngay"
-            );
-
-            // Chuyển sang màu đỏ cảnh báo
-            controller.setStyleDanger();
-
-            // 4. Hiển thị
-            dialogStage.showAndWait();
-
-            // 5. Xử lý kết quả
-            if (controller.isConfirmed()) {
-                historyService.clearHistory();
-                refreshHistory();
-                if (globalStatusLabel != null) {
-                    globalStatusLabel.setText("Đã xóa toàn bộ lịch sử tải xuống.");
-                }
-            }
-
-        } catch (IOException e) {
-            e.printStackTrace();
-            // Fallback nếu lỗi load FXML
-            new Alert(Alert.AlertType.ERROR, "Lỗi hiển thị hộp thoại: " + e.getMessage()).showAndWait();
-        }
-    }
-
-    private void showSuccessDialog(String header, String content) {
-        try {
-            FXMLLoader loader = new FXMLLoader(getClass().getResource("/org/example/p2pfileshare/ConfirmationDialog.fxml"));
-            Parent page = loader.load();
-
-            Stage dialogStage = new Stage();
-            dialogStage.initStyle(StageStyle.UNDECORATED);
-            dialogStage.initModality(Modality.APPLICATION_MODAL);
-            if (historyTable.getScene() != null) {
-                dialogStage.initOwner(historyTable.getScene().getWindow());
-            }
-            dialogStage.setScene(new Scene(page));
-
-            ConfirmationController controller = loader.getController();
-            controller.setDialogStage(dialogStage);
-
-            // Set nội dung
-            controller.setContent("Thông báo", header, content, "Đóng");
-
-            // GỌI HÀM MỚI ĐỂ CHUYỂN GIAO DIỆN SANG MÀU XANH & ẨN NÚT HỦY
-            controller.setStyleSuccess();
-
-            dialogStage.showAndWait();
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    // optional: call this when controller is disposed to avoid leaks
-    public void dispose() {
-        if (historyService != null && historyChangeListener != null) {
-            historyService.removeHistoryChangeListener(historyChangeListener);
+        boolean confirmed = Dialogs.confirm(historyTable,
+                "🗑 Xóa lịch sử",
+                "Bạn có muốn xóa toàn bộ " + histories.size() + " mục lịch sử không?",
+                "Hành động này sẽ xóa danh sách nhật ký tải xuống vĩnh viễn.",
+                "Xóa ngay");
+        if (confirmed) {
+            historyService.clearHistory();
+            if (globalStatusLabel != null) globalStatusLabel.setText("Đã xóa toàn bộ lịch sử tải xuống.");
         }
     }
 }

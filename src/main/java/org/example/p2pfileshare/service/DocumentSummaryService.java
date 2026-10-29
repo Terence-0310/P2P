@@ -1,5 +1,6 @@
 package org.example.p2pfileshare.service;
 
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
@@ -49,12 +50,12 @@ public class DocumentSummaryService {
         }
         if (fullText.trim().isEmpty()) return "Không trích xuất được nội dung văn bản.";
 
-        return extracKeySentences(fullText, 3);
+        return extractKeySentences(fullText, 3);
     }
 
     // doc file pdf
     private String readPdf(File file) throws IOException {
-        try (PDDocument document = PDDocument.load(file)) {
+        try (PDDocument document = Loader.loadPDF(file)) {
             PDFTextStripper stripper = new PDFTextStripper();
 
             stripper.setEndPage(10); // chi doc toi da 10 trang
@@ -76,7 +77,7 @@ public class DocumentSummaryService {
 
     // Tóm tắt kiểu trích xuất: chấm điểm câu theo tần suất từ khóa, lấy numSentences câu điểm cao nhất
     // và giữ nguyên thứ tự xuất hiện trong văn bản gốc.
-    String extracKeySentences(String text, int numSentences) {
+    String extractKeySentences(String text, int numSentences) {
         // tach van ban thanh cau (theo dấu câu hoặc dòng trống)
         List<String> sentences = new ArrayList<>();
         for (String raw : text.split("(?<=[.!?])\\s+|\\n\\s*\\n")) {

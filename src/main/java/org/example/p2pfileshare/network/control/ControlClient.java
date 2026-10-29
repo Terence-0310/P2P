@@ -8,7 +8,7 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class ControlClient {
@@ -26,8 +26,9 @@ public class ControlClient {
     private volatile int myControlPort;
     private volatile int myFilePort;
 
-    // peerId của các peer đã chấp nhận kết nối từ mình (mình là client)
-    private final Set<String> connectedPeerIds = ConcurrentHashMap.newKeySet();
+    // Các peer đã chấp nhận kết nối từ mình (mình là client), key = peerId.
+    // Giữ cả PeerInfo để gửi lệnh tiếp theo mà không phải quét LAN lại.
+    private final Map<String, PeerInfo> connectedPeers = new ConcurrentHashMap<>();
 
     public ControlClient(String myPeerId, String myDisplayName) {
         this.myPeerId = myPeerId;
@@ -44,12 +45,11 @@ public class ControlClient {
         this.myFilePort = filePort;
     }
 
-    public boolean sendConnectRequest(PeerInfo peer) {
-        return sendConnectRequest(peer.getIp(), peer.getControlPort(), peer.getPeerId());
-    }
-
     // Format: CONNECT_REQUEST|myId|toId|displayName|controlPort|filePort
-    public boolean sendConnectRequest(String host, int controlPort, String toPeer) {
+    public boolean sendConnectRequest(PeerInfo peer) {
+        String host = peer.getIp();
+        int controlPort = peer.getControlPort();
+        String toPeer = peer.getPeerId();
         System.out.println("[ControlClient] Connecting to " + host + ":" + controlPort +
                 " to request connect → " + toPeer);
 
@@ -79,7 +79,7 @@ public class ControlClient {
             }
 
             if (ControlProtocol.CONNECT_ACCEPT.equals(parsed.command)) {
-                connectedPeerIds.add(parsed.fromPeer);
+                connectedPeers.put(parsed.fromPeer, peer);
                 return true;
             }
             return false;
@@ -91,14 +91,11 @@ public class ControlClient {
     }
 
     public List<RemoteFile> listFiles(PeerInfo peer) {
-        return listFiles(peer.getIp(), peer.getControlPort(), peer.getPeerId());
-    }
-
-    public List<RemoteFile> listFiles(String host, int controlPort, String toPeer) {
+        String toPeer = peer.getPeerId();
         System.out.println("[ControlClient] Request LIST_FILES → " + toPeer);
         List<RemoteFile> files = new ArrayList<>();
 
-        try (Socket socket = openSocket(host, controlPort, DEFAULT_READ_TIMEOUT_MS);
+        try (Socket socket = openSocket(peer.getIp(), peer.getControlPort(), DEFAULT_READ_TIMEOUT_MS);
              BufferedReader reader = readerOf(socket);
              PrintWriter writer = writerOf(socket)) {
 
@@ -132,20 +129,18 @@ public class ControlClient {
         return files;
     }
 
-    public boolean sendDisconnectRequest(PeerInfo peer) {
-        if (peer == null) return false;
-        return sendDisconnectRequest(peer.getIp(), peer.getControlPort(), peer.getPeerId());
-    }
-
     /**
      * Gửi DISCONNECT_REQUEST. Phía mình luôn coi như đã ngắt (kể cả khi peer đã tắt máy),
      * giá trị trả về chỉ cho biết peer kia có xác nhận hay không.
      */
-    public boolean sendDisconnectRequest(String host, int controlPort, String toPeer) {
-        System.out.println("[ControlClient] Sending DISCONNECT_REQUEST to " + host + ":" + controlPort + " -> " + toPeer);
-        connectedPeerIds.remove(toPeer);
+    public boolean sendDisconnectRequest(PeerInfo peer) {
+        if (peer == null) return false;
+        String toPeer = peer.getPeerId();
+        System.out.println("[ControlClient] Sending DISCONNECT_REQUEST to " + peer.getIp() + ":"
+                + peer.getControlPort() + " -> " + toPeer);
+        connectedPeers.remove(toPeer);
 
-        try (Socket socket = openSocket(host, controlPort, DEFAULT_READ_TIMEOUT_MS);
+        try (Socket socket = openSocket(peer.getIp(), peer.getControlPort(), DEFAULT_READ_TIMEOUT_MS);
              BufferedReader reader = readerOf(socket);
              PrintWriter writer = writerOf(socket)) {
 
@@ -261,18 +256,23 @@ public class ControlClient {
         }
     }
 
-    /** Danh sách peerId mà mình đang kết nối tới (bản sao) */
-    public List<String> getPeerIdList() {
-        return new ArrayList<>(connectedPeerIds);
+    /** Danh sách peer mà mình đang kết nối tới (bản sao) */
+    public List<PeerInfo> getConnectedPeers() {
+        return new ArrayList<>(connectedPeers.values());
+    }
+
+    /** Thông tin peer mình đang kết nối tới, null nếu chưa kết nối */
+    public PeerInfo getConnectedPeer(String peerId) {
+        return peerId == null ? null : connectedPeers.get(peerId);
     }
 
     public boolean isConnectedTo(String peerId) {
-        return peerId != null && connectedPeerIds.contains(peerId);
+        return peerId != null && connectedPeers.containsKey(peerId);
     }
 
     /** Gọi khi peer kia chủ động ngắt kết nối với mình */
     public void removeConnectedPeer(String peerId) {
-        if (peerId != null) connectedPeerIds.remove(peerId);
+        if (peerId != null) connectedPeers.remove(peerId);
     }
 
     // ---------------- helpers ----------------
