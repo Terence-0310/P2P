@@ -23,7 +23,7 @@ class DocumentSummaryServiceTest {
                 + "Mô hình P2P giúp các máy trao đổi dữ liệu trực tiếp không qua máy chủ. "
                 + "Multicast gửi một gói tin tới nhiều máy trong cùng nhóm.";
 
-        String summary = service.extracKeySentences(text, 3);
+        String summary = service.extractKeySentences(text, 3);
 
         assertNotEquals(text, summary);
         assertEquals(3, summary.split(" \\(\\.\\.\\.\\) ").length);
@@ -32,7 +32,7 @@ class DocumentSummaryServiceTest {
 
     @Test
     void shortTextIsReturnedAsIs() {
-        String summary = service.extracKeySentences("Câu một ở đây. Câu hai ở đây.", 3);
+        String summary = service.extractKeySentences("Câu một ở đây. Câu hai ở đây.", 3);
         assertTrue(summary.contains("Câu một ở đây."));
         assertTrue(summary.contains("Câu hai ở đây."));
     }
