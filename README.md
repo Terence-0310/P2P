@@ -24,7 +24,7 @@
 
 ## Công nghệ
 
-Java 17, JavaFX 17 (FXML), Socket TCP/UDP Multicast, đa luồng (thread pool, `wait/notify`), Gson, Apache PDFBox, Apache POI, JUnit 5.
+Java 17+, JavaFX 21 (FXML), Socket TCP/UDP Multicast, đa luồng (thread pool, `wait/notify`), Gson, Apache PDFBox, Apache POI, JUnit 5.
 
 ## Kiến trúc mạng
 
@@ -33,8 +33,8 @@ Mỗi peer mở 3 kênh:
 | Kênh | Giao thức | Cổng | Vai trò |
 |---|---|---|---|
 | Discovery | UDP Multicast | `230.0.0.1:8888` | Tìm peer: `P2P_DISCOVER_REQUEST` → `P2P_DISCOVER_RESPONSE\|peerId\|tên\|filePort\|controlPort` |
-| Control | TCP, text 1 dòng UTF-8 | 7000–7999 (ngẫu nhiên) | Kết nối/ngắt, danh sách file, tìm kiếm, tóm tắt, đổi tên |
-| File | TCP, nhị phân (`DataInputStream`) | 6000–6999 (ngẫu nhiên) | Metadata + chunk |
+| Control | TCP, text 1 dòng UTF-8 | 7000–7999 (cổng trống) | Kết nối/ngắt, danh sách file, tìm kiếm, tóm tắt, đổi tên |
+| File | TCP, nhị phân (`DataInputStream`) | 6000–6999 (cổng trống) | Metadata + chunk |
 
 ### Kênh điều khiển (Control)
 
@@ -65,7 +65,7 @@ Server chỉ phục vụ `peerId` đã được chấp nhận kết nối, và c
 ```
 src/main/java/org/example/p2pfileshare/
 ├── controller/   Giao diện JavaFX (RootController nối các service và tab)
-├── model/        PeerInfo, SharedFile*, SearchResult, DownloadHistory, ...
+├── model/        PeerInfo, SharedFileLocal, SearchResult, DownloadHistory, ...
 ├── network/
 │   ├── discovery/  PeerDiscovery (UDP Multicast)
 │   ├── control/    ControlServer, ControlClient, ControlProtocol
