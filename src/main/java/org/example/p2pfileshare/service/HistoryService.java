@@ -30,9 +30,6 @@ public class HistoryService {
     public void removeHistory(DownloadHistory h) {
         manager.removeHistory(h);
     }
-    public  List<DownloadHistory> loadHistory() {
-        return manager.loadHistory();
-    }
     // Listener registration forwarded to manager
     public void addHistoryChangeListener(Runnable listener) {
         manager.addChangeListener(listener);

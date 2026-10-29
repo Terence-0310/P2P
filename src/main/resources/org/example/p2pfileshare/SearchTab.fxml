@@ -54,20 +54,6 @@
             </TableView>
         </VBox>
 
-<!--        <VBox spacing="10" style="-fx-background-color: white; -fx-padding: 15; -fx-background-radius: 8; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.05), 5, 0, 0, 1);">-->
-<!--            <HBox spacing="15" alignment="CENTER_LEFT">-->
-<!--                <Button text="👁 Xem chi tiết" onAction="#onViewFileDetails" styleClass="button, secondary" />-->
-<!--                <Region HBox.hgrow="ALWAYS" />-->
-<!--                <Button fx:id="btnDownload" text="⬇ Tải về" onAction="#onDownloadFile" styleClass="button" style="-fx-background-color: #2ecc71;" />-->
-<!--            </HBox>-->
-
-<!--            <HBox spacing="10" alignment="CENTER_LEFT" style="-fx-background-color: #f7f9f9; -fx-padding: 8; -fx-background-radius: 5;">-->
-<!--                <Label text="Tiến trình:" style="-fx-font-weight: bold; -fx-text-fill: #7f8c8d;" />-->
-<!--                <ProgressBar fx:id="downloadProgress" prefWidth="250" progress="0.0" style="-fx-accent: #2ecc71;" />-->
-<!--                <Label fx:id="downloadStatusLabel" text="Sẵn sàng" style="-fx-text-fill: #2c3e50; -fx-font-style: italic;" />-->
-<!--            </HBox>-->
-<!--        </VBox>-->
-
         <VBox spacing="10" style="-fx-background-color: white; -fx-padding: 15; -fx-background-radius: 8; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.05), 5, 0, 0, 1);">
 
             <HBox spacing="15" alignment="CENTER_LEFT">
