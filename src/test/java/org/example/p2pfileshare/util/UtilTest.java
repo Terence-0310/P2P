@@ -77,4 +77,17 @@ class UtilTest {
             assertTrue(second.await(10, TimeUnit.SECONDS), "Không thấy thay đổi trong thư mục con mới tạo");
         }
     }
+
+    @Test
+    void portFinderSkipsPortsInUse() throws Exception {
+        try (java.net.ServerSocket busy = new java.net.ServerSocket(0)) {
+            int taken = busy.getLocalPort();
+            assertFalse(PortFinder.isFree(taken));
+            // khoảng chỉ có 1 cổng mà cổng đó bị chiếm -> báo lỗi rõ ràng thay vì trả cổng trùng
+            assertThrows(IllegalStateException.class, () -> PortFinder.findFreePort(taken, taken));
+        }
+        int port = PortFinder.findFreePort(20000, 20100);
+        assertTrue(port >= 20000 && port <= 20100);
+        assertTrue(PortFinder.isFree(port));
+    }
 }

@@ -14,11 +14,6 @@ import java.util.Map;
 
 public class PeerDiscovery {
 
-    // Các port có thể dùng cho discovery (UDP)
-//    private static final int[] DISCOVERY_PORTS = {
-//            50000, 50001, 50002, 50003, 50004
-//    };
-
     // cấu hình multicast
     private static final String MULTICAST_GROUP = "230.0.0.1";
     private static final int MULTICAST_PORT = 8888;
@@ -81,7 +76,6 @@ public class PeerDiscovery {
                         responderSocket.receive(packet);
 
                         String msg = new String(packet.getData(), 0, packet.getLength(), StandardCharsets.UTF_8).trim();
-//                        if (!DISCOVER_MSG.equals(msg)) continue;
 
                         if (DISCOVER_MSG.equals(msg)) {
                             String response = buildResponse(myPeerId, displayNameSupplier.get(), filePort, controlPort);

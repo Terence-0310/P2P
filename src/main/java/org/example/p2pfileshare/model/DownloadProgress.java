@@ -39,14 +39,6 @@ public class DownloadProgress {
         return (completedChunks.cardinality() * 100.0) / totalChunks;
     }
 
-    public int getCompletedChunks() {
-        return completedChunks.cardinality();
-    }
-
-    public BitSet getCompletedChunksBitSet() {
-        return completedChunks;
-    }
-
     // --- Persist bitmap (resume thật sự) ---
 
     public void loadBitmap(Path bitmapFile) throws IOException {
@@ -63,10 +55,6 @@ public class DownloadProgress {
     public void saveBitmap(Path bitmapFile) throws IOException {
         byte[] data = completedChunks.toByteArray();
         Files.write(bitmapFile, data);
-    }
-
-    public void clearAll() {
-        completedChunks.clear();
     }
 
     // Getters
