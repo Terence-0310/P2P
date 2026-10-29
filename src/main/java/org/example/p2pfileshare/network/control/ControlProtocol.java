@@ -19,7 +19,6 @@ public class ControlProtocol {
     public static final String DISCONNECT_REQUEST  = "DISCONNECT_REQUEST";
     public static final String DISCONNECT_NOTIFY   = "DISCONNECT_NOTIFY";
     public static final String UPDATE_NAMESERVER   = "UPDATE_NAME";
-    public static final String UPDATE_CLIENT   = "UPDATE_NAME";
     // Mở rộng: lấy danh sách file chia sẻ từ peer đích
     public static final String LIST_FILES          = "LIST_FILES";
     public static final String LIST_FILES_RESPONSE = "LIST_FILES_RESPONSE"; // note: payload dạng key-value được encode
