@@ -20,6 +20,10 @@ public class ChunkedFileClient {
 
     private static final int CONNECT_TIMEOUT_MS = 5000;
     private static final int SOCKET_TIMEOUT_MS = 8000;
+    // Lần đầu server phải băm cả file mới trả metadata: file vài GB có thể mất vài phút
+    private static final int METADATA_TIMEOUT_MS = 5 * 60_000;
+    // Chặn metadata bất thường từ peer (chunk quá lớn -> cấp phát bộ nhớ lớn mỗi lần đọc)
+    static final int MAX_CHUNK_SIZE = 16 * 1024 * 1024;
     private static final int MAX_RETRIES = 3;
     // Số kết nối TCP tải song song cho 1 file (mặc định và giới hạn trên)
     public static final int DEFAULT_PARALLEL_CONNECTIONS = 4;
@@ -43,8 +47,7 @@ public class ChunkedFileClient {
      */
     public static FileMetadata requestMetadata(String host, int port, String myPeerId, String fileName) throws IOException {
         try (Socket socket = openSocket(host, port)) {
-            // Server có thể mất thời gian băm file lớn ở lần đầu
-            socket.setSoTimeout(0);
+            socket.setSoTimeout(METADATA_TIMEOUT_MS);
 
             try (DataInputStream in = new DataInputStream(new BufferedInputStream(socket.getInputStream()));
                  DataOutputStream out = new DataOutputStream(socket.getOutputStream())) {
@@ -72,6 +75,7 @@ public class ChunkedFileClient {
                 int chunkSize = in.readInt();
                 int totalChunks = in.readInt();
                 String fileSha256 = in.readUTF();
+                validateMetadata(fileSize, chunkSize, totalChunks);
 
                 // Read chunk hashes
                 List<String> chunkHashes = new ArrayList<>(totalChunks);
@@ -347,6 +351,16 @@ public class ChunkedFileClient {
     }
 
     // ---------------- helpers: socket/meta/bitmap/part ----------------
+
+    /** Metadata đến từ peer khác là dữ liệu không tin cậy: kiểm tra trước khi cấp phát theo các con số này */
+    static void validateMetadata(long fileSize, int chunkSize, int totalChunks) throws IOException {
+        if (fileSize < 0) throw new IOException("Invalid file size " + fileSize);
+        if (chunkSize <= 0 || chunkSize > MAX_CHUNK_SIZE) throw new IOException("Invalid chunk size " + chunkSize);
+        long expectedChunks = (fileSize + chunkSize - 1) / chunkSize;
+        if (totalChunks != expectedChunks) {
+            throw new IOException("Invalid chunk count " + totalChunks + " (expected " + expectedChunks + ")");
+        }
+    }
 
     static int clampParallelConnections(int requested) {
         return Math.max(1, Math.min(MAX_PARALLEL_CONNECTIONS, requested));

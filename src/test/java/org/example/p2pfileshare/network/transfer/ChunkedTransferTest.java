@@ -1,5 +1,7 @@
 package org.example.p2pfileshare.network.transfer;
 
+import java.io.DataOutputStream;
+import java.io.DataInputStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -137,5 +139,44 @@ class ChunkedTransferTest {
                 null, control));
         assertFalse(Files.exists(saveTo));
         assertFalse(Files.exists(dest.resolve("big.bin.part")));
+    }
+
+    @Test
+    void rejectsMetadataThatWouldAllocateHugeBuffers() {
+        assertDoesNotThrow(() -> ChunkedFileClient.validateMetadata(0, 1024, 0));
+        assertDoesNotThrow(() -> ChunkedFileClient.validateMetadata(2049, 1024, 3));
+        assertThrows(IOException.class, () -> ChunkedFileClient.validateMetadata(-1, 1024, 0));
+        assertThrows(IOException.class, () -> ChunkedFileClient.validateMetadata(10, 0, 1));
+        assertThrows(IOException.class,
+                () -> ChunkedFileClient.validateMetadata(10, ChunkedFileClient.MAX_CHUNK_SIZE + 1, 1));
+        assertThrows(IOException.class, () -> ChunkedFileClient.validateMetadata(10, 1024, Integer.MAX_VALUE));
+    }
+
+    @Test
+    void maliciousServerMetadataFailsFastInsteadOfOutOfMemory() throws Exception {
+        try (ServerSocket fake = new ServerSocket(0)) {
+            Thread t = new Thread(() -> {
+                try (Socket s = fake.accept();
+                     DataInputStream in = new DataInputStream(s.getInputStream());
+                     DataOutputStream out = new DataOutputStream(s.getOutputStream())) {
+                    in.readUTF();
+                    out.writeUTF("FILE_META_RESPONSE");
+                    out.writeUTF("evil.bin");
+                    out.writeLong(10);
+                    out.writeInt(1024);
+                    out.writeInt(Integer.MAX_VALUE); // client sẽ cấp phát list 2 tỷ phần tử nếu tin con số này
+                    out.writeUTF("hash");
+                    out.flush();
+                    in.read(); // giữ kết nối tới khi client đóng
+                } catch (IOException ignored) {
+                }
+            });
+            t.setDaemon(true);
+            t.start();
+
+            IOException e = assertThrows(IOException.class, () ->
+                    ChunkedFileClient.requestMetadata("127.0.0.1", fake.getLocalPort(), ALLOWED_PEER, "evil.bin"));
+            assertTrue(e.getMessage().contains("chunk count"), e.getMessage());
+        }
     }
 }

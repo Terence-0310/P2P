@@ -26,8 +26,8 @@ public class ChunkedFileServer {
     // Đóng kết nối nếu client không gửi request nào trong khoảng này (vd. đang pause)
     private static final int IDLE_TIMEOUT_MS = 60_000;
 
-    // Đỡ tạo vô hạn thread
-    private ExecutorService pool = Executors.newFixedThreadPool(POOL_SIZE);
+    // Đỡ tạo vô hạn thread; tạo khi start()
+    private ExecutorService pool;
 
     // Kiểm tra peerId đã được chấp nhận kết nối chưa (null = cho phép tất cả)
     private final Predicate<String> accessChecker;
@@ -82,9 +82,13 @@ public class ChunkedFileServer {
 
         running = true;
 
-        // Nếu pool đã shutdown từ lần trước, tạo lại
-        if (pool == null || pool.isShutdown() || pool.isTerminated()) {
-            pool = Executors.newFixedThreadPool(POOL_SIZE);
+        // Nếu pool đã shutdown từ lần trước, tạo lại. Luồng daemon để không giữ JVM khi tắt app
+        if (pool == null || pool.isShutdown()) {
+            pool = Executors.newFixedThreadPool(POOL_SIZE, r -> {
+                Thread t = new Thread(r, "chunked-file-handler");
+                t.setDaemon(true);
+                return t;
+            });
         }
 
         serverThread = new Thread(this::runLoop, "chunked-file-server");
