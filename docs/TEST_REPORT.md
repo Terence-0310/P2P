@@ -7,7 +7,7 @@ Chỉ ghi kết quả của những lệnh đã thực sự chạy. Mục nào c
 
 ## 1. Kiểm thử tự động (JUnit 5)
 
-### Trên `main` (commit `465355c`)
+### Trên `main` (mã nền, commit `041def1`)
 
 | Lệnh | Kết quả |
 |---|---|
