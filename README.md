@@ -113,7 +113,7 @@ Có thể mở nhiều cửa sổ trên cùng một máy để thử, vì mỗi 
 
 1. Máy A và B mở app, nhập tên.
 2. Máy B: tab *📂 Tài liệu chia sẻ* → chọn thư mục.
-3. Máy A: tab *🌐 Mạng LAN* → *🔄 Quét LAN* → chọn B → *🔗 Kết nối...*; máy B bấm *Chấp nhận*.
+3. Máy A: tab *🌐 Mạng LAN* → *🔄 Quét LAN* → chọn B → *🔗 Kết nối...*. Máy B bấm *Chấp nhận* trong 45 giây (hộp thoại tự đóng và coi như từ chối khi hết giờ). Kết nối là **2 chiều**: cả A và B đều hiện *Đã kết nối*, đều có tab *Kết nối: …* để xem và tải file của nhau. Bấm *Ngắt kết nối* ở bất kỳ máy nào, ở bất kỳ tab nào, thì cả 2 máy cùng ngắt.
 4. Máy A: tab *Kết nối: B* → *⬇ Tải xuống* (thử Tạm dừng/Tiếp tục), hoặc chuột phải vào file → *✨ Tóm tắt file*.
 5. Máy A: tab *Tìm kiếm* → nhập từ khóa → tải từ kết quả.
 

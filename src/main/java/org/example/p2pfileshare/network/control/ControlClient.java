@@ -15,8 +15,9 @@ public class ControlClient {
 
     // Thời gian chờ mở kết nối: peer đã tắt máy thì báo lỗi nhanh thay vì treo ~20s
     private static final int CONNECT_TIMEOUT_MS = 3000;
-    // Chờ người bên kia bấm Chấp nhận / Từ chối
-    private static final int CONNECT_DECISION_TIMEOUT_MS = 60_000;
+    // Chờ người bên kia bấm Chấp nhận / Từ chối: lâu hơn thời gian hộp thoại bên kia tự đóng,
+    // để không xảy ra cảnh bên kia đã chấp nhận còn bên mình đã bỏ cuộc
+    private static final int CONNECT_DECISION_TIMEOUT_MS = (ControlProtocol.CONNECT_DECISION_SECONDS + 15) * 1000;
     private static final int DEFAULT_READ_TIMEOUT_MS = 10_000;
     // Tóm tắt file lớn có thể mất thời gian
     private static final int SUMMARIZE_TIMEOUT_MS = 60_000;
@@ -268,6 +269,11 @@ public class ControlClient {
 
     public boolean isConnectedTo(String peerId) {
         return peerId != null && connectedPeers.containsKey(peerId);
+    }
+
+    /** Peer kia gửi yêu cầu và mình đã chấp nhận: kết nối 2 chiều, mình cũng xem được file của peer đó */
+    public void addConnectedPeer(PeerInfo peer) {
+        if (peer != null && peer.getPeerId() != null) connectedPeers.put(peer.getPeerId(), peer);
     }
 
     /** Gọi khi peer kia chủ động ngắt kết nối với mình */

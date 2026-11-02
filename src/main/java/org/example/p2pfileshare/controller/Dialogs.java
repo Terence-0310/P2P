@@ -1,5 +1,7 @@
 package org.example.p2pfileshare.controller;
 
+import javafx.animation.KeyFrame;
+import javafx.animation.Timeline;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Node;
 import javafx.scene.Parent;
@@ -12,6 +14,7 @@ import javafx.stage.Modality;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 import javafx.stage.Window;
+import javafx.util.Duration;
 
 import java.io.IOException;
 
@@ -30,25 +33,35 @@ final class Dialogs {
 
     /** Hỏi Đồng ý / Hủy (màu mặc định), trả về true nếu người dùng bấm nút đồng ý */
     static boolean ask(Node anchor, String title, String header, String content, String okText) {
-        return show(anchor, title, header, content, okText, Style.DEFAULT);
+        return show(anchor, title, header, content, okText, Style.DEFAULT, 0);
+    }
+
+    /**
+     * Như {@link #ask} nhưng luôn nổi lên trên mọi cửa sổ, nút đồng ý đếm ngược và hộp thoại
+     * tự đóng (= không đồng ý) sau {@code timeoutSeconds} giây.
+     */
+    static boolean askWithTimeout(Node anchor, String title, String header, String content, String okText,
+                                  int timeoutSeconds) {
+        return show(anchor, title, header, content, okText, Style.DEFAULT, timeoutSeconds);
     }
 
     /** Như {@link #ask} nhưng màu đỏ, dùng cho hành động nguy hiểm (xóa, ngắt kết nối...) */
     static boolean confirm(Node anchor, String title, String header, String content, String okText) {
-        return show(anchor, title, header, content, okText, Style.DANGER);
+        return show(anchor, title, header, content, okText, Style.DANGER, 0);
     }
 
     /** Thông báo màu xanh, chỉ có nút Đóng */
     static void info(Node anchor, String title, String header, String content) {
-        show(anchor, title, header, content, "Đóng", Style.SUCCESS);
+        show(anchor, title, header, content, "Đóng", Style.SUCCESS, 0);
     }
 
     /** Thông báo lỗi / cảnh báo màu đỏ */
     static void error(Node anchor, String title, String header, String content) {
-        show(anchor, title, header, content, "Đóng", Style.DANGER);
+        show(anchor, title, header, content, "Đóng", Style.DANGER, 0);
     }
 
-    private static boolean show(Node anchor, String title, String header, String content, String okText, Style style) {
+    private static boolean show(Node anchor, String title, String header, String content, String okText,
+                                Style style, int timeoutSeconds) {
         try {
             FXMLLoader loader = new FXMLLoader(Dialogs.class.getResource(CONFIRM_FXML));
             Stage stage = newStage(anchor, loader.load(), StageStyle.UNDECORATED);
@@ -57,6 +70,27 @@ final class Dialogs {
             controller.setContent(title, header, content, okText);
             if (style == Style.DANGER) controller.setStyleDanger();
             if (style == Style.SUCCESS) controller.setStyleSuccess();
+            if (timeoutSeconds > 0) {
+                // app đang nằm dưới cửa sổ khác vẫn thấy ngay yêu cầu
+                stage.setAlwaysOnTop(true);
+                if (stage.getOwner() instanceof Stage owner) {
+                    if (owner.isIconified()) owner.setIconified(false);
+                    owner.toFront();
+                }
+                int[] left = {timeoutSeconds};
+                controller.setConfirmText(okText + " (" + left[0] + "s)");
+                Timeline countdown = new Timeline(new KeyFrame(Duration.seconds(1), e -> {
+                    left[0]--;
+                    controller.setConfirmText(okText + " (" + left[0] + "s)");
+                    if (left[0] <= 0) stage.close(); // hết giờ = không đồng ý
+                }));
+                countdown.setCycleCount(timeoutSeconds);
+                stage.setOnShown(e -> {
+                    stage.toFront();
+                    countdown.play();
+                });
+                stage.setOnHidden(e -> countdown.stop());
+            }
             stage.showAndWait();
             return controller.isConfirmed();
         } catch (IOException e) {

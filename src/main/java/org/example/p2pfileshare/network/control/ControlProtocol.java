@@ -25,6 +25,12 @@ public class ControlProtocol {
     // Lệnh hệ thống 1 chiều: báo cho peer đang xem kho file của mình rằng danh sách file đã thay đổi
     public static final String CMD_FILES_CHANGED = "CMD:FILES_CHANGED";
 
+    /**
+     * Thời gian tối đa (giây) để người nhận bấm Chấp nhận / Từ chối. Hộp thoại tự đóng (= từ chối) khi hết giờ,
+     * bên gửi chờ lâu hơn một chút, nên hai bên luôn có cùng kết quả.
+     */
+    public static final int CONNECT_DECISION_SECONDS = 45;
+
     // Cấu trúc sau khi parse
     public static class ParsedMessage {
         public String command;
