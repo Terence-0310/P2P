@@ -79,6 +79,20 @@ src/main/java/org/example/p2pfileshare/
 
 ## Chạy ứng dụng
 
+### Máy mới (chưa cài gì)
+
+Chép cả thư mục dự án sang máy, rồi bấm đúp **`setup.bat`** (cần Internet ở lần đầu). Script [scripts/setup.ps1](scripts/setup.ps1) sẽ:
+
+1. Kiểm tra Windows 10+ và kết nối tới Maven Central.
+2. Tìm JDK 17+ có sẵn. Nếu không có, tải **Eclipse Temurin JDK 21** (bản zip, không cần quyền Admin, có kiểm tra SHA-256) vào `%LOCALAPPDATA%\P2PFileShare\jdk-21`.
+3. Build bằng `mvnw`. Maven Wrapper tự tải Maven, Maven tự tải JavaFX và các thư viện.
+4. Thêm rule Windows Firewall cho Java (Windows hỏi quyền Admin, bấm *Yes*).
+5. In IP của máy trong LAN, in bảng tóm tắt, rồi mở app.
+
+Các lần sau, bấm đúp **`run.bat`**. Muốn mở 2 cửa sổ trên 1 máy để thử: `setup.bat -Instances 2` hoặc `run.bat -Instances 2`.
+
+### Máy đã có JDK
+
 Yêu cầu JDK 17 trở lên.
 
 - **NetBeans**: *File → Open Project…* chọn thư mục dự án (NetBeans nhận ra dự án Maven), rồi bấm **Run Project** (F6). Debug (Ctrl+F5) cũng dùng được. Cấu hình nằm trong `nbactions.xml`.
