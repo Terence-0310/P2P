@@ -23,6 +23,8 @@
                     <Region HBox.hgrow="ALWAYS" />
 
                     <Button text="🔄 Quét LAN" onAction="#onScanPeers" styleClass="button" />
+                    <Button text="➕ Thêm theo IP" onAction="#onAddPeerByIp" styleClass="button" />
+                    <Button fx:id="firewallButton" text="🛡 Tường lửa" onAction="#onConfigureFirewall" styleClass="button" />
                     <Button text="🔗 Kết nối..." onAction="#onConnectPeer" styleClass="button" style="-fx-background-color: #27ae60;" />
                     <Button text="❌ Ngắt kết nối" onAction="#onDisconnectPeer" styleClass="button, danger" />
                 </HBox>

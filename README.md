@@ -79,6 +79,20 @@ src/main/java/org/example/p2pfileshare/
 
 ## Chạy ứng dụng
 
+### Máy mới (chưa cài gì)
+
+Chép cả thư mục dự án sang máy, rồi bấm đúp **`setup.bat`** (cần Internet ở lần đầu). Script [scripts/setup.ps1](scripts/setup.ps1) sẽ:
+
+1. Kiểm tra Windows 10+ và kết nối tới Maven Central.
+2. Tìm JDK 17+ có sẵn. Nếu không có, tải **Eclipse Temurin JDK 21** (bản zip, không cần quyền Admin, có kiểm tra SHA-256) vào `%LOCALAPPDATA%\P2PFileShare\jdk-21`.
+3. Build bằng `mvnw`. Maven Wrapper tự tải Maven, Maven tự tải JavaFX và các thư viện.
+4. Thêm rule Windows Firewall cho Java (Windows hỏi quyền Admin, bấm *Yes*).
+5. In IP của máy trong LAN, in bảng tóm tắt, rồi mở app.
+
+Các lần sau, bấm đúp **`run.bat`**. Muốn mở 2 cửa sổ trên 1 máy để thử: `setup.bat -Instances 2` hoặc `run.bat -Instances 2`.
+
+### Máy đã có JDK
+
 Yêu cầu JDK 17 trở lên.
 
 - **NetBeans**: *File → Open Project…* chọn thư mục dự án (NetBeans nhận ra dự án Maven), rồi bấm **Run Project** (F6). Debug (Ctrl+F5) cũng dùng được. Cấu hình nằm trong `nbactions.xml`.
@@ -86,7 +100,14 @@ Yêu cầu JDK 17 trở lên.
 - **Maven**: `mvnw exec:java` (Windows: `.\mvnw.cmd exec:java`). Chạy được cả khi đường dẫn thư mục có dấu tiếng Việt.
 - `mvnw javafx:run` cũng chạy được, nhưng **chỉ khi đường dẫn thư mục không có dấu**: plugin truyền đường dẫn qua dòng lệnh, Windows làm mất ký tự có dấu và báo `InvalidPathException`.
 
-Có thể mở nhiều cửa sổ trên cùng một máy để thử, vì mỗi lần chạy app dùng cổng và `peerId` khác nhau. Nếu không tìm thấy peer, hãy kiểm tra Windows Firewall đã cho phép Java nhận kết nối trên mạng Private.
+Có thể mở nhiều cửa sổ trên cùng một máy để thử, vì mỗi lần chạy app dùng cổng và `peerId` khác nhau.
+
+### Tìm peer giữa 2 máy
+
+- Lần chạy đầu trên Windows, app hỏi có cho phép qua **Windows Firewall** không. Bấm *Cho phép* rồi chấp nhận hộp thoại quyền Admin. App thêm rule cho `java.exe` đang chạy (mọi cổng, mọi loại mạng) và xoá rule *Block* mà Windows tạo khi lỡ bấm *Cancel*. Có thể làm lại bằng nút **🛡 Tường lửa** trong tab *Mạng LAN*. **Cần làm trên cả 2 máy.**
+- *Quét LAN* gửi cả **multicast** (`230.0.0.1:8888`) lẫn **broadcast** của từng mạng con, vì nhiều router chặn multicast nhưng vẫn cho broadcast.
+- Nếu Wi-Fi vẫn chặn cả hai cách, dùng **➕ Thêm theo IP** và nhập IP máy kia (xem bằng `ipconfig`). App nhớ IP đó cho các lần quét sau.
+- Wi-Fi công cộng hoặc Wi-Fi trường thường bật *client isolation*, chặn mọi kết nối giữa các máy. Khi đó không app nào kết nối được. Hãy dùng hotspot điện thoại hoặc router riêng.
 
 ### Kịch bản demo
 

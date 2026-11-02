@@ -3,9 +3,13 @@ package org.example.p2pfileshare.service;
 import org.example.p2pfileshare.model.PeerInfo;
 import org.example.p2pfileshare.network.discovery.PeerDiscovery;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 
 public class PeerService {
@@ -17,6 +21,8 @@ public class PeerService {
 
     // Danh sách peer tìm thấy trong LAN
     private final List<PeerInfo> discoveredPeers = Collections.synchronizedList(new ArrayList<>());
+    // IP nhập tay, được hỏi trực tiếp ở mỗi lần quét
+    private final Set<String> manualHosts = new LinkedHashSet<>();
 
     public PeerService(String myPeerId, String myDisplayName, int fileServerPort, int controlPort) {
         this.myPeerId = myPeerId;
@@ -44,9 +50,13 @@ public class PeerService {
         System.out.println("[PeerService] Đã dừng Responder");
     }
 
-    // quét tìm Peer
+    // quét tìm Peer (kèm các IP người dùng đã nhập tay)
     public List<PeerInfo> scanPeers() {
-        List<PeerInfo> found = PeerDiscovery.discoverPeers(myPeerId, 3000);
+        List<String> hosts;
+        synchronized (manualHosts) {
+            hosts = new ArrayList<>(manualHosts);
+        }
+        List<PeerInfo> found = PeerDiscovery.discoverPeers(myPeerId, 3000, hosts);
 
         // Cập nhật danh sách local
         synchronized (discoveredPeers) {
@@ -54,6 +64,24 @@ public class PeerService {
             discoveredPeers.addAll(found);
         }
         return found;
+    }
+
+    /**
+     * Hỏi thẳng một IP (khi mạng chặn multicast/broadcast). Nếu có peer trả lời thì nhớ IP đó
+     * để các lần quét sau vẫn thấy. Trả về null nếu không có phản hồi.
+     */
+    public PeerInfo addPeerByIp(String host) throws UnknownHostException {
+        String ip = InetAddress.getByName(host).getHostAddress();
+        List<PeerInfo> found = PeerDiscovery.discoverPeers(myPeerId, 2000, List.of(ip));
+        for (PeerInfo p : found) {
+            if (p.getIp().equals(ip)) {
+                synchronized (manualHosts) {
+                    manualHosts.add(ip);
+                }
+                return p;
+            }
+        }
+        return null;
     }
 
     // lấy danh sách peer tìm thấy ở lần quét gần nhất

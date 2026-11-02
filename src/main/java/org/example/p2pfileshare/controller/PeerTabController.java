@@ -15,6 +15,8 @@ import org.example.p2pfileshare.network.control.ControlClient;
 import org.example.p2pfileshare.network.control.ControlServer;
 import org.example.p2pfileshare.service.FileShareService;
 import org.example.p2pfileshare.service.PeerService;
+import org.example.p2pfileshare.util.AppConfig;
+import org.example.p2pfileshare.util.WindowsFirewall;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -38,6 +40,10 @@ public class PeerTabController {
     @FXML private TableColumn<PeerInfo, Number> colPeerPort;
     @FXML private TableColumn<PeerInfo, PeerInfo.ConnectionState> colPeerStatus;
     @FXML private Label peerStatusLabel;
+    @FXML private Button firewallButton;
+
+    // người dùng đã chọn "không" ở hộp thoại tường lửa -> không hỏi lại mỗi lần mở app
+    private static final String FIREWALL_SKIP_KEY = "firewall.skipPrompt";
 
     private final ObservableList<PeerInfo> peerList = FXCollections.observableArrayList();
 
@@ -54,6 +60,7 @@ public class PeerTabController {
 
         setupTable();
         onScanPeers();
+        checkFirewallOnStartup();
 
         // peer đổi tên / ngắt kết nối với mình -> quét lại để cập nhật bảng
         controlServer.setpeerUpdateName(() -> Platform.runLater(this::onScanPeers));
@@ -137,6 +144,113 @@ public class PeerTabController {
         });
 
         startDaemon(task, "scan-peers");
+    }
+
+    // THÊM PEER THEO IP (khi Wi-Fi/router chặn quét tự động)
+    @FXML
+    private void onAddPeerByIp() {
+        TextInputDialog dialog = new TextInputDialog();
+        if (peerTable.getScene() != null) dialog.initOwner(peerTable.getScene().getWindow());
+        dialog.setTitle("Thêm peer theo IP");
+        dialog.setHeaderText("Nhập địa chỉ IP của máy bên kia (xem bằng lệnh ipconfig)");
+        dialog.setContentText("IP:");
+        String host = dialog.showAndWait().map(String::trim).orElse("");
+        if (host.isEmpty()) return;
+
+        peerStatusLabel.setText("Đang hỏi " + host + "...");
+        Task<PeerInfo> task = new Task<>() {
+            @Override
+            protected PeerInfo call() throws Exception {
+                return peerService.addPeerByIp(host);
+            }
+        };
+        task.setOnSucceeded(e -> {
+            PeerInfo peer = task.getValue();
+            if (peer == null) {
+                peerStatusLabel.setText("Không có phản hồi từ " + host);
+                Dialogs.error(peerTable, "Không tìm thấy peer", "Không có phản hồi từ " + host,
+                        "Kiểm tra máy kia đã mở app, hai máy ping được nhau, và đã bấm 🛡 Tường lửa trên cả 2 máy.");
+                return;
+            }
+            peer.setConnectionState(controlClient.isConnectedTo(peer.getPeerId())
+                    ? PeerInfo.ConnectionState.CONNECTED
+                    : PeerInfo.ConnectionState.NOT_CONNECTED);
+            peerList.removeIf(p -> p.getPeerId().equals(peer.getPeerId()));
+            peerList.add(peer);
+            peerTable.getSelectionModel().select(peer);
+            peerStatusLabel.setText("Đã thêm " + peer.getName() + " (" + peer.getIp() + ")");
+        });
+        task.setOnFailed(e -> {
+            peerStatusLabel.setText("Địa chỉ không hợp lệ: " + host);
+            Dialogs.error(peerTable, "Lỗi", "Địa chỉ không hợp lệ", host);
+        });
+        startDaemon(task, "add-peer-ip");
+    }
+
+    // TƯỜNG LỬA
+    private void checkFirewallOnStartup() {
+        if (!WindowsFirewall.isWindows()) {
+            firewallButton.setVisible(false);
+            firewallButton.setManaged(false);
+            return;
+        }
+        Task<Boolean> task = new Task<>() {
+            @Override
+            protected Boolean call() {
+                return WindowsFirewall.isConfigured();
+            }
+        };
+        task.setOnSucceeded(e -> {
+            updateFirewallButton(task.getValue());
+            if (task.getValue() || "true".equals(AppConfig.load(FIREWALL_SKIP_KEY))) return;
+            boolean ok = Dialogs.ask(peerTable,
+                    "🛡 Tường lửa Windows",
+                    "Cho phép P2PFileShare qua tường lửa?",
+                    "Nếu không, máy khác trong LAN sẽ không quét thấy và không kết nối được tới máy này. "
+                            + "Windows sẽ hỏi quyền Admin (chỉ cần làm 1 lần).",
+                    "Cho phép");
+            if (ok) {
+                onConfigureFirewall();
+            } else {
+                AppConfig.save(FIREWALL_SKIP_KEY, "true");
+                peerStatusLabel.setText("Chưa mở tường lửa, bấm 🛡 Tường lửa khi cần");
+            }
+        });
+        startDaemon(task, "firewall-check");
+    }
+
+    @FXML
+    private void onConfigureFirewall() {
+        firewallButton.setDisable(true);
+        peerStatusLabel.setText("Đang cấu hình tường lửa (chấp nhận hộp thoại quyền Admin)...");
+        Task<Boolean> task = new Task<>() {
+            @Override
+            protected Boolean call() {
+                return WindowsFirewall.configure();
+            }
+        };
+        task.setOnSucceeded(e -> {
+            firewallButton.setDisable(false);
+            updateFirewallButton(task.getValue());
+            if (task.getValue()) {
+                AppConfig.remove(FIREWALL_SKIP_KEY);
+                peerStatusLabel.setText("Đã cho phép P2PFileShare qua tường lửa");
+                onScanPeers();
+            } else {
+                peerStatusLabel.setText("Chưa cấu hình được tường lửa");
+                Dialogs.error(peerTable, "Tường lửa", "Chưa cấu hình được tường lửa",
+                        "Có thể bạn đã bấm No ở hộp thoại quyền Admin. Hãy thử lại, "
+                                + "hoặc mở Windows Security → Firewall và cho phép Java.");
+            }
+        });
+        startDaemon(task, "firewall-config");
+    }
+
+    private void updateFirewallButton(boolean configured) {
+        firewallButton.setText(configured ? "🛡 Tường lửa ✓" : "🛡 Tường lửa ⚠");
+        firewallButton.setTooltip(new Tooltip(configured
+                ? "Đã cho phép P2PFileShare qua Windows Firewall"
+                : "Tường lửa có thể đang chặn, bấm để cho phép"));
     }
 
     // sử dụng để refresh từ bên ngoài

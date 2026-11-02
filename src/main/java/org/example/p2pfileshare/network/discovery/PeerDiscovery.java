@@ -7,10 +7,13 @@ import java.io.IOException;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class PeerDiscovery {
 
@@ -147,11 +150,20 @@ public class PeerDiscovery {
 
     // Quét tìm peer trong LAN
     public static List<PeerInfo> discoverPeers(String myPeerId, int timeoutMillis) {
-        // key = peerId: 1 peer có thể trả lời qua nhiều card mạng, chỉ giữ lần đầu
+        return discoverPeers(myPeerId, timeoutMillis, List.of());
+    }
+
+    /**
+     * Quét LAN bằng multicast + broadcast, đồng thời hỏi thẳng các IP trong {@code extraHosts}
+     * (peer người dùng nhập tay, dùng khi router chặn multicast/broadcast).
+     */
+    public static List<PeerInfo> discoverPeers(String myPeerId, int timeoutMillis, Collection<String> extraHosts) {
+        // key = peerId: 1 peer có thể trả lời qua nhiều card mạng / nhiều cách gửi, chỉ giữ lần đầu
         Map<String, PeerInfo> result = new LinkedHashMap<>();
 
         try (MulticastSocket socket = new MulticastSocket()) {
             socket.setSoTimeout(timeoutMillis); // timeout chỉ chờ trong 3s, quá thì thôi
+            socket.setBroadcast(true);
 
             byte[] data = DISCOVER_MSG.getBytes(StandardCharsets.UTF_8);
 
@@ -174,9 +186,32 @@ public class PeerDiscovery {
                 }
             }
             if (sent == 0) {
-                socket.send(packet);
+                try {
+                    socket.send(packet);
+                } catch (IOException e) {
+                    System.err.println("[Discovery] Cannot send multicast: " + e.getMessage());
+                }
             }
             System.out.println("[Discovery] Sent Multicast Request to " + MULTICAST_GROUP + " via " + Math.max(sent, 1) + " interface(s)");
+
+            // Broadcast: nhiều router/Wi-Fi chặn multicast nhưng vẫn cho broadcast trong cùng mạng con
+            Set<InetAddress> targets = new LinkedHashSet<>(broadcastAddresses());
+            // Hỏi thẳng IP nhập tay (unicast), đi qua được cả mạng chặn multicast lẫn broadcast
+            for (String host : extraHosts) {
+                try {
+                    targets.add(InetAddress.getByName(host));
+                } catch (UnknownHostException e) {
+                    System.err.println("[Discovery] Unknown host: " + host);
+                }
+            }
+            for (InetAddress target : targets) {
+                try {
+                    socket.send(new DatagramPacket(data, data.length, target, MULTICAST_PORT));
+                } catch (IOException e) {
+                    System.err.println("[Discovery] Cannot send to " + target.getHostAddress() + ": " + e.getMessage());
+                }
+            }
+            System.out.println("[Discovery] Sent Broadcast/Unicast Request to " + targets);
 
 
             byte[] buf = new byte[1024];
@@ -281,6 +316,23 @@ public class PeerDiscovery {
             }
         } catch (SocketException e) {
             System.err.println("[Discovery] Cannot list network interfaces: " + e.getMessage());
+        }
+        return list;
+    }
+
+    // Địa chỉ broadcast của từng mạng con IPv4 (vd. 192.168.1.255) + 255.255.255.255
+    private static List<InetAddress> broadcastAddresses() {
+        List<InetAddress> list = new ArrayList<>();
+        for (NetworkInterface ni : multicastInterfaces()) {
+            for (InterfaceAddress a : ni.getInterfaceAddresses()) {
+                InetAddress b = a.getBroadcast();
+                if (b != null && !list.contains(b)) list.add(b);
+            }
+        }
+        try {
+            InetAddress all = InetAddress.getByName("255.255.255.255");
+            if (!list.contains(all)) list.add(all);
+        } catch (UnknownHostException ignored) {
         }
         return list;
     }
