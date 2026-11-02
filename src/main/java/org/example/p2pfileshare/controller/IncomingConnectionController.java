@@ -9,6 +9,7 @@ import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import org.example.p2pfileshare.model.PeerInfo;
 import org.example.p2pfileshare.network.control.ControlServer;
+import org.example.p2pfileshare.service.ConnectionService;
 import org.example.p2pfileshare.service.PeerService;
 
 import java.time.LocalDateTime;
@@ -26,22 +27,19 @@ public class IncomingConnectionController {
 
     private PeerService peerService;
     private ControlServer controlServer;
-    private String myUID;
+    private ConnectionService connectionService;
     private final ObservableList<PeerInfo> incomingPeerList = FXCollections.observableArrayList();
 
-    public void init(PeerService peerService, ControlServer controlServer, String myUID) {
-        this.myUID = myUID;
+    public void init(PeerService peerService, ControlServer controlServer, ConnectionService connectionService) {
         this.peerService = peerService;
         this.controlServer = controlServer;
+        this.connectionService = connectionService;
 
         setupTable();
         loadIncomingConnections();
 
-        // Đăng ký listener để tự động reload khi có peer mới được chấp nhận
-        controlServer.setOnPeerAccepted(() -> {
-            System.out.println("[IncomingConnection] Peer accepted → reload table");
-            Platform.runLater(this::loadIncomingConnections);
-        });
+        // Danh sách peer được xem file của mình thay đổi (chấp nhận, ngắt, đổi tên) -> tải lại bảng
+        controlServer.setOnPeerAccepted(() -> Platform.runLater(this::loadIncomingConnections));
     }
 
     private void setupTable() {
@@ -95,7 +93,7 @@ public class IncomingConnectionController {
         boolean confirmed = Dialogs.confirm(connectedPeerTable,
                 "🔌 Ngắt kết nối",
                 "Ngắt kết nối với " + selected.getName() + "?",
-                "Peer này sẽ không thể tải file của bạn nữa cho đến khi kết nối lại.",
+                "Cả hai máy sẽ không xem và tải file của nhau được nữa cho đến khi kết nối lại.",
                 "Đồng ý");
         if (confirmed) {
             statusLabel.setText("Đang ngắt kết nối với " + selected.getName() + "...");
@@ -103,18 +101,16 @@ public class IncomingConnectionController {
             Task<Boolean> task = new Task<>() {
                 @Override
                 protected Boolean call() {
-                    return controlServer.disconnectPeer(selected, myUID);
+                    // ngắt 2 chiều; tab Mạng LAN và tab kết nối tự cập nhật qua ConnectionService
+                    return connectionService.disconnect(selected);
                 }
             };
             task.setOnSucceeded(e -> {
                 // Quyền truy cập đã bị thu hồi ngay cả khi không báo được cho peer
-                incomingPeerList.remove(selected);
-                if (Boolean.TRUE.equals(task.getValue())) {
-                    statusLabel.setText("Đã ngắt kết nối với " + selected.getName());
-                    Dialogs.info(connectedPeerTable, "Thông báo", "Thành công", "Đã chặn kết nối từ " + selected.getName());
-                } else {
-                    statusLabel.setText("Đã chặn " + selected.getName() + " (peer không nhận được thông báo)");
-                }
+                loadIncomingConnections();
+                statusLabel.setText(Boolean.TRUE.equals(task.getValue())
+                        ? "Đã ngắt kết nối với " + selected.getName()
+                        : "Đã ngắt kết nối với " + selected.getName() + " (peer không nhận được thông báo)");
             });
             Thread t = new Thread(task, "kick-peer");
             t.setDaemon(true);

@@ -7,7 +7,9 @@ import javafx.scene.control.*;
 import javafx.stage.Stage;
 import org.example.p2pfileshare.model.PeerInfo;
 import org.example.p2pfileshare.network.control.ControlClient;
+import org.example.p2pfileshare.network.control.ControlProtocol;
 import org.example.p2pfileshare.network.control.ControlServer;
+import org.example.p2pfileshare.service.ConnectionService;
 import org.example.p2pfileshare.service.FileShareService;
 import org.example.p2pfileshare.service.HistoryService;
 import org.example.p2pfileshare.service.PeerService;
@@ -18,6 +20,7 @@ import org.example.p2pfileshare.util.PortFinder;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class RootController {
@@ -51,6 +54,7 @@ public class RootController {
     // Control channel
     private ControlServer controlServer;
     private ControlClient controlClient;
+    private ConnectionService connectionService;
 
     // Peer info
     private String myPeerId;
@@ -87,23 +91,27 @@ public class RootController {
 
             Platform.runLater(() -> {
                 try {
-                    accepted.set(Dialogs.ask(mainTabPane,
+                    // hộp thoại tự đóng khi hết giờ, khớp với thời gian bên gửi chờ
+                    accepted.set(Dialogs.askWithTimeout(mainTabPane,
                             "🔗 Yêu cầu kết nối",
                             "Peer \"" + fromPeer + "\" muốn kết nối!",
-                            "Bạn có muốn cho phép thiết bị này truy cập kho file chia sẻ của bạn không?",
-                            "Chấp nhận"));
+                            "Hai máy sẽ xem và tải được file chia sẻ của nhau. Bạn có đồng ý kết nối không?",
+                            "Chấp nhận",
+                            ControlProtocol.CONNECT_DECISION_SECONDS));
                 } finally {
                     latch.countDown();
                 }
             });
 
             try {
-                latch.await();
+                if (!latch.await(ControlProtocol.CONNECT_DECISION_SECONDS + 5, TimeUnit.SECONDS)) return false;
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+                return false;
             }
             return accepted.get();
         });
+        connectionService = new ConnectionService(controlClient, controlServer);
 
         // inject FileShareService để phục vụ LIST_FILES
         controlServer.setFileShareService(fileShareService);
@@ -145,24 +153,33 @@ public class RootController {
             }
         });
 
-        // Xử lý thông báo ngắt kết nối
-        controlServer.setOnDisconnectNotify(msg -> Platform.runLater(() -> {
-            System.out.println("DISCONNECT_NOTIFY from=" + msg.fromPeer + " to=" + msg.toPeer);
-            String from = msg.fromPeer != null ? msg.fromPeer : "Unknown";
-            String content = (msg.note != null && !msg.note.isBlank()) ? msg.note : ("Bởi peer: " + from);
+        // Peer kia ngắt kết nối -> báo cho người dùng (cập nhật bảng/tab do PeerTabController tự lắng nghe)
+        connectionService.addListener(new ConnectionService.Listener() {
+            @Override
+            public void onConnected(PeerInfo peer, boolean incoming) {
+                if (incoming) Platform.runLater(() -> globalStatusLabel.setText("Đã kết nối với " + peer.getName()));
+            }
 
-            controlClient.removeConnectedPeer(msg.fromPeer);
-            Dialogs.error(mainTabPane, "Thông báo", "Bạn đã bị ngắt kết nối", content);
-            globalStatusLabel.setText("Bạn đã bị ngắt kết nối: " + from);
-            peerTabController.onRemotePeerDisconnected(msg.fromPeer);
-        }));
+            @Override
+            public void onDisconnected(String peerId, boolean byRemote) {
+                if (!byRemote || shuttingDown) return;
+                // tên lấy từ bảng peer vì lúc này peer đã bị xoá khỏi danh sách kết nối
+                Platform.runLater(() -> {
+                    String name = peerTabController != null ? peerTabController.nameOf(peerId) : peerId;
+                    globalStatusLabel.setText("Đã ngắt kết nối: " + name);
+                    Dialogs.error(mainTabPane, "Thông báo", "Đã ngắt kết nối",
+                            "Peer \"" + name + "\" đã ngắt kết nối với bạn.");
+                });
+            }
+        });
 
         controlServer.start();
         System.out.println("[Root] ControlServer started at port " + CONTROL_PORT);
 
         // Inject service vào UI controllers
         if (peerTabController != null)
-            peerTabController.init(peerService, fileShareService, controlClient, controlServer, globalStatusLabel);
+            peerTabController.init(peerService, fileShareService, controlClient, controlServer, connectionService,
+                    globalStatusLabel);
 
         if (shareTabController != null)
             shareTabController.init(fileShareService, globalStatusLabel);
@@ -174,7 +191,7 @@ public class RootController {
             historyTabController.init(historyService, globalStatusLabel);
 
         if (incomingConnectionTabController != null)
-            incomingConnectionTabController.init(peerService, controlServer, myPeerId);
+            incomingConnectionTabController.init(peerService, controlServer, connectionService);
 
         globalStatusLabel.setText("Sẵn sàng");
         // Hiển thị tên người dùng lên status bar (nếu Label đã được inject)
@@ -268,22 +285,14 @@ public class RootController {
         if (globalStatusLabel != null)
             globalStatusLabel.setText("Đang ngắt kết nối...");
 
-        // Peer mình đã cho phép kết nối đến, và peer mình đang kết nối tới
-        List<PeerInfo> incoming = controlServer.getAcceptedPeers(peerService.getDiscoveredPeers());
-        List<PeerInfo> outgoing = controlClient.getConnectedPeers();
+        // Mọi peer đang kết nối (2 chiều, không trùng)
+        List<PeerInfo> connected = connectionService.getConnectedPeers();
 
         // Gửi thông báo ở thread nền để không treo giao diện khi peer đã tắt máy
         Thread t = new Thread(() -> {
-            for (PeerInfo p : incoming) {
+            for (PeerInfo p : connected) {
                 try {
-                    controlServer.disconnectPeer(p, myPeerId);
-                } catch (Exception e) {
-                    System.out.println("[Shutdown] Failed notify " + p.getPeerId() + ": " + e.getMessage());
-                }
-            }
-            for (PeerInfo p : outgoing) {
-                try {
-                    controlClient.sendDisconnectRequest(p);
+                    connectionService.disconnect(p);
                 } catch (Exception e) {
                     System.out.println("[Shutdown] Failed notify " + p.getPeerId() + ": " + e.getMessage());
                 }

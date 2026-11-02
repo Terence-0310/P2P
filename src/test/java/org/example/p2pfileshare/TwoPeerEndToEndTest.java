@@ -6,6 +6,7 @@ import org.example.p2pfileshare.network.control.ControlServer;
 import org.example.p2pfileshare.network.discovery.PeerDiscovery;
 import org.example.p2pfileshare.network.transfer.ChunkedFileClient;
 import org.example.p2pfileshare.network.transfer.DownloadControl;
+import org.example.p2pfileshare.service.ConnectionService;
 import org.example.p2pfileshare.service.FileShareService;
 import org.example.p2pfileshare.service.HistoryService;
 import org.example.p2pfileshare.util.DownloadHistoryManager;
@@ -53,6 +54,7 @@ class TwoPeerEndToEndTest {
     // Peer B (chia sẻ)
     private FileShareService fileShareB;
     private ControlServer controlServerB;
+    private ConnectionService connectionB;
     private PeerInfo peerB;
     private final AtomicBoolean bAccepts = new AtomicBoolean(true);
 
@@ -84,13 +86,14 @@ class TwoPeerEndToEndTest {
         fileShareB.setShareFolder(shareB.toFile());
         controlServerB.setFileShareService(fileShareB);
         controlServerB.start();
+        connectionB = new ConnectionService(new ControlClient(PEER_B, "Máy B"), controlServerB);
         waitForPort(ctrlB);
         waitForPort(fileB);
         peerB = new PeerInfo(PEER_B, "Máy B", "127.0.0.1", fileB, ctrlB, "Online");
 
         int ctrlA = freePort();
         controlServerA = new ControlServer(ctrlA, displayName -> true);
-        controlServerA.setOnDisconnectNotify(msg -> aNotifiedOfDisconnect.countDown());
+        controlServerA.setOnPeerDisconnected(id -> aNotifiedOfDisconnect.countDown());
         controlServerA.start();
         waitForPort(ctrlA);
         clientA = new ControlClient(PEER_A, "Máy A");
@@ -156,8 +159,8 @@ class TwoPeerEndToEndTest {
         assertTrue(download(saveTo, new DownloadControl(), null));
         assertEquals(originalSha256, FileHashUtil.sha256(saveTo));
 
-        // 5) B chặn A: A được báo, lần tải sau bị từ chối
-        controlServerB.disconnectPeer(peerAasSeenByB, PEER_B);
+        // 5) B ngắt kết nối: A được báo, lần tải sau bị từ chối
+        connectionB.disconnect(peerAasSeenByB);
         assertTrue(aNotifiedOfDisconnect.await(5, TimeUnit.SECONDS), "A không nhận được DISCONNECT_NOTIFY");
         assertFalse(controlServerB.isAccepted(PEER_A));
         IOException blocked = assertThrows(IOException.class,
@@ -211,7 +214,7 @@ class TwoPeerEndToEndTest {
         // Lần 1: sau chunk đầu tiên, B chặn A -> các chunk còn lại bị từ chối
         boolean first = download(saveTo, new DownloadControl(), p -> {
             if (p > 0 && p < 1 && blockedOnce.compareAndSet(false, true)) {
-                controlServerB.disconnectPeer(peerAasSeenByB, PEER_B);
+                connectionB.disconnect(peerAasSeenByB);
             }
         });
         assertFalse(first, "Tải phải thất bại khi bị chặn giữa chừng");

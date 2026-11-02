@@ -36,6 +36,10 @@ public class ConfirmationController {
         }
     }
 
+    public void setConfirmText(String text) {
+        confirmButton.setText(text);
+    }
+
     // Tùy chọn: Đổi màu dialog sang màu đỏ nếu là hành động nguy hiểm (như Xóa)
     public void setStyleDanger() {
         headerBox.setStyle("-fx-background-color: #e74c3c; -fx-padding: 10 15;");

@@ -21,6 +21,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Base64;
 import java.util.List;
+import java.util.function.Consumer;
 
 public class ConnectedPeerController {
 
@@ -57,13 +58,16 @@ public class ConnectedPeerController {
     private ControlClient controlClient;
     private FileShareService fileShareService;
 
-    // PeerTabController đăng ký để biết khi tab này đã ngắt kết nối (gọi trên JavaFX thread)
-    private Runnable onDisconnectedCallback;
+    // Bấm "Ngắt kết nối" trong tab -> PeerTabController hỏi xác nhận và ngắt cả 2 chiều
+    private Consumer<PeerInfo> onDisconnectRequested;
+    private boolean disconnected = false;
 
-    public void init(PeerInfo peer, ControlClient controlClient, FileShareService fileShareService) {
+    public void init(PeerInfo peer, ControlClient controlClient, FileShareService fileShareService,
+                     Consumer<PeerInfo> onDisconnectRequested) {
         this.peer = peer;
         this.controlClient = controlClient;
         this.fileShareService = fileShareService;
+        this.onDisconnectRequested = onDisconnectRequested;
 
         peerNameLabel.setText(peer.getName() + " (" + peer.getIp() + ")");
 
@@ -227,11 +231,18 @@ public class ConnectedPeerController {
 
     /** Gọi trên JavaFX thread khi kết nối với peer này đã bị ngắt (do mình hoặc do peer) */
     public void onPeerDisconnected() {
+        disconnected = true;
+        progress.setProgress(0);
         statusLabel.setText("Đã ngắt kết nối với peer. Bấm 'Kết nối' ở tab Mạng LAN để kết nối lại.");
         fileTable.setDisable(true);
         btnDownload.setDisable(true);
         // tải dở (nếu có) sẽ bị peer từ chối và báo thất bại, file .part được giữ lại
         // nên lần sau kết nối lại và tải cùng file vào cùng thư mục sẽ tải tiếp phần còn thiếu
+    }
+
+    /** Tab này đã ngắt kết nối (lần kết nối sau sẽ mở tab mới thay thế) */
+    public boolean isDisconnected() {
+        return disconnected;
     }
 
     /** Gọi khi tab bị đóng: hủy tải dở để không còn thread chạy ngầm */
@@ -333,58 +344,14 @@ public class ConnectedPeerController {
         btnCancel.setDisable(true);
     }
 
-    public void setOnDisconnected(Runnable callback) {
-        this.onDisconnectedCallback = callback;
-    }
-
     @FXML
     private void onDisconnect() {
-        boolean confirmed = Dialogs.confirm(fileTable,
-                "🔌 Ngắt kết nối",
-                "Bạn có chắc muốn ngắt kết nối với " + peer.getName() + "?",
-                "Hành động này sẽ dừng mọi tiến trình tải file đang chạy.",
-                "Ngắt kết nối");
-        if (!confirmed) return;
-
-        if (currentJob != null) {
-            currentJob.cancel();
-        }
-
-        // Nếu đã ngắt rồi thì chỉ cập nhật giao diện
-        if (!controlClient.isConnectedTo(peer.getPeerId())) {
-            onPeerDisconnected();
+        if (disconnected) {
+            statusLabel.setText("Đã ngắt kết nối với peer này rồi");
             return;
         }
-
-        statusLabel.setText("Đang ngắt kết nối...");
-        peer.setConnectionState(PeerInfo.ConnectionState.PENDING);
-        progress.setProgress(-1);
-        fileTable.setDisable(true);
-
-        Task<Boolean> task = new Task<>() {
-            @Override
-            protected Boolean call() {
-                return controlClient.sendDisconnectRequest(peer);
-            }
-        };
-
-        task.setOnSucceeded(e -> {
-            // Phía mình luôn coi như đã ngắt, kể cả khi peer kia không phản hồi
-            finishDisconnect();
-            statusLabel.setText(Boolean.TRUE.equals(task.getValue())
-                    ? "Đã ngắt kết nối"
-                    : "Đã ngắt kết nối (peer không phản hồi)");
-        });
-        task.setOnFailed(e -> finishDisconnect());
-
-        startDaemon(task, "disconnect-from-connected-tab");
-    }
-
-    private void finishDisconnect() {
-        peer.setConnectionState(PeerInfo.ConnectionState.NOT_CONNECTED);
-        progress.setProgress(0);
-        onPeerDisconnected();
-        if (onDisconnectedCallback != null) onDisconnectedCallback.run();
+        // hỏi xác nhận + ngắt 2 chiều ở PeerTabController; khi xong ConnectionService gọi onPeerDisconnected()
+        if (onDisconnectRequested != null) onDisconnectRequested.accept(peer);
     }
 
     public void updatePeerDisplayName(String newName) {
