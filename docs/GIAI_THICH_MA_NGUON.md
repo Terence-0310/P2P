@@ -403,7 +403,7 @@ Kịch bản kiểm thử tay: [KICH_BAN_KIEM_THU.md](KICH_BAN_KIEM_THU.md).
 
 ## 13. Quy trình Git của đề tài
 
-- Commit đầu `465355c` là **commit nhập mã nền** bản 2.0, phát triển tiếp từ mã của Ngô Khắc Cường và Nguyễn Gia Kiệt (ghi công trong README và [BASELINE_AND_GIT_HISTORY.md](BASELINE_AND_GIT_HISTORY.md)). Lịch sử không bị sửa ngày.
+- 12 commit đầu (`7a794a0`…`041def1`) là **mã nền** bản 2.0, tách theo module từ commit nhập ban đầu `465355c`, phát triển tiếp từ mã của Ngô Khắc Cường và Nguyễn Gia Kiệt (ghi công trong README và [BASELINE_AND_GIT_HISTORY.md](BASELINE_AND_GIT_HISTORY.md)).
 - Từ 26/10/2026: **Issue → nhánh `feature/<MSSV>-issue-<số>-<tên>` → commit Conventional Commits → Pull Request → review → merge**.
 - Nhánh `main` được bảo vệ: không push trực tiếp, cần 1 Approve.
 
