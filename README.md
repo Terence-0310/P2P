@@ -86,7 +86,14 @@ Yêu cầu JDK 17 trở lên.
 - **Maven**: `mvnw exec:java` (Windows: `.\mvnw.cmd exec:java`). Chạy được cả khi đường dẫn thư mục có dấu tiếng Việt.
 - `mvnw javafx:run` cũng chạy được, nhưng **chỉ khi đường dẫn thư mục không có dấu**: plugin truyền đường dẫn qua dòng lệnh, Windows làm mất ký tự có dấu và báo `InvalidPathException`.
 
-Có thể mở nhiều cửa sổ trên cùng một máy để thử, vì mỗi lần chạy app dùng cổng và `peerId` khác nhau. Nếu không tìm thấy peer, hãy kiểm tra Windows Firewall đã cho phép Java nhận kết nối trên mạng Private.
+Có thể mở nhiều cửa sổ trên cùng một máy để thử, vì mỗi lần chạy app dùng cổng và `peerId` khác nhau.
+
+### Tìm peer giữa 2 máy
+
+- Lần chạy đầu trên Windows, app hỏi có cho phép qua **Windows Firewall** không. Bấm *Cho phép* rồi chấp nhận hộp thoại quyền Admin. App thêm rule cho `java.exe` đang chạy (mọi cổng, mọi loại mạng) và xoá rule *Block* mà Windows tạo khi lỡ bấm *Cancel*. Có thể làm lại bằng nút **🛡 Tường lửa** trong tab *Mạng LAN*. **Cần làm trên cả 2 máy.**
+- *Quét LAN* gửi cả **multicast** (`230.0.0.1:8888`) lẫn **broadcast** của từng mạng con, vì nhiều router chặn multicast nhưng vẫn cho broadcast.
+- Nếu Wi-Fi vẫn chặn cả hai cách, dùng **➕ Thêm theo IP** và nhập IP máy kia (xem bằng `ipconfig`). App nhớ IP đó cho các lần quét sau.
+- Wi-Fi công cộng hoặc Wi-Fi trường thường bật *client isolation*, chặn mọi kết nối giữa các máy. Khi đó không app nào kết nối được. Hãy dùng hotspot điện thoại hoặc router riêng.
 
 ### Kịch bản demo
 
