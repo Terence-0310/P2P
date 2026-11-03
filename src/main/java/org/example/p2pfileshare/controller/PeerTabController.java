@@ -226,8 +226,8 @@ public class PeerTabController {
             boolean ok = Dialogs.ask(peerTable,
                     "🛡 Tường lửa Windows",
                     "Cho phép P2PFileShare qua tường lửa?",
-                    "Nếu không, máy khác trong LAN sẽ không quét thấy và không kết nối được tới máy này. "
-                            + "Windows sẽ hỏi quyền Admin (chỉ cần làm 1 lần).",
+                    "Nếu không, máy khác trong LAN sẽ không quét thấy, không ping được và không kết nối được "
+                            + "tới máy này. Một cửa sổ PowerShell sẽ mở ra và Windows hỏi quyền Admin (chỉ cần làm 1 lần).",
                     "Cho phép");
             if (ok) {
                 onConfigureFirewall();
@@ -242,26 +242,35 @@ public class PeerTabController {
     @FXML
     private void onConfigureFirewall() {
         firewallButton.setDisable(true);
-        peerStatusLabel.setText("Đang cấu hình tường lửa (chấp nhận hộp thoại quyền Admin)...");
-        Task<Boolean> task = new Task<>() {
+        peerStatusLabel.setText("Đang cấu hình tường lửa: bấm YES ở hộp thoại quyền Admin của Windows "
+                + "(không thấy thì bấm biểu tượng khiên nhấp nháy trên thanh taskbar)...");
+        Task<WindowsFirewall.Result> task = new Task<>() {
             @Override
-            protected Boolean call() {
+            protected WindowsFirewall.Result call() {
                 return WindowsFirewall.configure();
             }
         };
         task.setOnSucceeded(e -> {
             firewallButton.setDisable(false);
-            updateFirewallButton(task.getValue());
-            if (task.getValue()) {
+            WindowsFirewall.Result result = task.getValue();
+            updateFirewallButton(result == WindowsFirewall.Result.OK);
+            if (result == WindowsFirewall.Result.OK) {
                 AppConfig.remove(FIREWALL_SKIP_KEY);
-                peerStatusLabel.setText("Đã cho phép P2PFileShare qua tường lửa");
+                peerStatusLabel.setText("Đã cho phép P2PFileShare và lệnh ping qua tường lửa");
                 onScanPeers();
-            } else {
-                peerStatusLabel.setText("Chưa cấu hình được tường lửa");
-                Dialogs.error(peerTable, "Tường lửa", "Chưa cấu hình được tường lửa",
-                        "Có thể bạn đã bấm No ở hộp thoại quyền Admin. Hãy thử lại, "
-                                + "hoặc mở Windows Security → Firewall và cho phép Java.");
+                return;
             }
+            peerStatusLabel.setText("Chưa cấu hình được tường lửa");
+            String reason = switch (result) {
+                case CANCELLED -> "Bạn đã bấm No ở hộp thoại quyền Admin.";
+                case FAILED -> "Đã có quyền Admin nhưng Windows không cho thêm rule "
+                        + "(máy do trường/công ty quản lý, hoặc có phần mềm diệt virus kèm tường lửa riêng).";
+                default -> "Không nhận được kết quả: hộp thoại quyền Admin có thể đang nằm dưới thanh taskbar, "
+                        + "hoặc cửa sổ PowerShell đã bị đóng.";
+            };
+            Dialogs.error(peerTable, "Tường lửa", "Chưa cấu hình được tường lửa",
+                    reason + "\n\nCách khác: tắt app, bấm đúp file firewall.bat trong thư mục dự án rồi bấm Yes. "
+                            + "Tài khoản Windows cần có quyền Administrator.");
         });
         startDaemon(task, "firewall-config");
     }
