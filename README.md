@@ -214,7 +214,3 @@ Nhóm 12, lớp 23DTHA6, học phần Lập trình mạng máy tính.
 | 2380600546 | Trần Hồng Đức | Tìm kiếm file trên nhiều peer, đồng bộ danh sách file | Chưa có |
 | 2380602377 | Trần Anh Trung | Giao diện JavaFX, lịch sử tải xuống | Chưa có |
 | 2380601944 | Lê Tấn Tài | Phân loại, tóm tắt tài liệu; kiểm thử JUnit | Chưa có |
-
----
-
-<sub>Phát triển dựa trên mã nguồn P2PFileShare của Ngô Khắc Cường và Nguyễn Gia Kiệt.</sub>
