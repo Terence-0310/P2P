@@ -104,7 +104,8 @@ Có thể mở nhiều cửa sổ trên cùng một máy để thử, vì mỗi 
 
 ### Tìm peer giữa 2 máy
 
-- Lần chạy đầu trên Windows, app hỏi có cho phép qua **Windows Firewall** không. Bấm *Cho phép* rồi chấp nhận hộp thoại quyền Admin. App thêm rule cho `java.exe` đang chạy (mọi cổng, mọi loại mạng) và xoá rule *Block* mà Windows tạo khi lỡ bấm *Cancel*. Có thể làm lại bằng nút **🛡 Tường lửa** trong tab *Mạng LAN*. **Cần làm trên cả 2 máy.**
+- Lần chạy đầu trên Windows, app hỏi có cho phép qua **Windows Firewall** không. Bấm *Cho phép*: một cửa sổ PowerShell mở ra và Windows hỏi quyền Admin, bấm *Yes*. Nếu không thấy hộp thoại, bấm biểu tượng khiên nhấp nháy trên thanh taskbar. App thêm rule cho `java.exe` đang chạy (mọi cổng, mọi loại mạng), **cho phép ping** (ICMPv4 echo) và xoá rule *Block* mà Windows tạo khi lỡ bấm *Cancel*. Có thể làm lại bằng nút **🛡 Tường lửa** trong tab *Mạng LAN*, hoặc tắt app rồi bấm đúp **`firewall.bat`**. **Cần làm trên cả 2 máy.**
+- Kiểm tra đường mạng tới máy kia: bấm đúp **`kiemtra.bat`** và nhập IP máy kia. Script ping thử, cho biết 2 máy có cùng dải mạng không, và liệt kê các nguyên nhân cần kiểm tra nếu ping thất bại.
 - *Quét LAN* gửi cả **multicast** (`230.0.0.1:8888`) lẫn **broadcast** của từng mạng con, vì nhiều router chặn multicast nhưng vẫn cho broadcast.
 - Nếu Wi-Fi vẫn chặn cả hai cách, dùng **➕ Thêm theo IP** và nhập IP máy kia (xem bằng `ipconfig`). App nhớ IP đó cho các lần quét sau.
 - Wi-Fi công cộng hoặc Wi-Fi trường thường bật *client isolation*, chặn mọi kết nối giữa các máy. Khi đó không app nào kết nối được. Hãy dùng hotspot điện thoại hoặc router riêng.
