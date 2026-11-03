@@ -1,9 +1,14 @@
 # P2PFileShare
 
-Ứng dụng desktop (JavaFX) chia sẻ tài liệu học tập trực tiếp giữa các máy trong cùng mạng LAN theo mô hình **Peer-to-Peer**, không cần máy chủ trung tâm.
+Ứng dụng desktop (JavaFX) chia sẻ tài liệu học tập giữa các máy theo mô hình **Peer-to-Peer**, với 2 chế độ kết nối:
+
+- **LAN**: các máy cùng mạng tìm nhau bằng UDP và truyền file TCP trực tiếp, không cần máy chủ.
+- **Internet**: 2 máy ở 2 mạng khác nhau (Wi-Fi nhà, 4G/5G, sau NAT/CGNAT) kết nối qua một **Relay Server** công khai bằng WebSocket bảo mật (`wss://`). Đây là **P2P có hỗ trợ chuyển tiếp** (relay-assisted), không phải kết nối trực tiếp: relay chuyển tiếp dữ liệu theo luồng và không lưu file. Chi tiết: [docs/INTERNET_MODE.md](docs/INTERNET_MODE.md), [docs/NETWORK_ARCHITECTURE.md](docs/NETWORK_ARCHITECTURE.md).
 
 ## Tính năng
 
+- **Internet Mode**: kết nối bằng **mã kết nối** 8 ký tự (hết hạn sau 10 phút, dùng 1 lần), relay xác thực từng máy bằng chữ ký Ed25519, người nhận vẫn phải bấm *Chấp nhận*. Không cần mở cổng router hay có IP công khai
+- **Phát hiện mất kết nối**: heartbeat tới relay và tới từng peer, hiển thị *Online / Offline / Connecting / Reconnecting*, tự kết nối lại relay (exponential backoff); đang tải mà mất mạng thì tác vụ chờ và **tự tải tiếp** từ các chunk đã xác minh khi có mạng lại
 - **Tìm peer trong LAN** bằng UDP Multicast, gửi và lắng nghe trên mọi card mạng (Wi-Fi, Ethernet, card ảo VMware/VirtualBox)
 - **Kết nối có xác nhận**: peer nhận yêu cầu phải bấm *Chấp nhận* thì bên kia mới xem, tìm kiếm, tải và tóm tắt được file
 - **Chia sẻ thư mục, kể cả thư mục con**. Nút *Thêm tài liệu...* chép file vào thư mục chia sẻ
@@ -24,7 +29,7 @@
 
 ## Công nghệ
 
-Java 17+, JavaFX 21 (FXML), Socket TCP/UDP Multicast, đa luồng (thread pool, `wait/notify`), Gson, Apache PDFBox, Apache POI, JUnit 5.
+Java 17+, JavaFX 21 (FXML), Socket TCP/UDP Multicast, WebSocket (`java.net.http` phía ứng dụng, RFC 6455 tự cài đặt phía relay), TLS, Ed25519, đa luồng (thread pool, `wait/notify`), Gson, Apache PDFBox, Apache POI, JUnit 5.
 
 ## Kiến trúc mạng
 
@@ -58,7 +63,19 @@ GET_CHUNK|peerId|tênFile|chỉSốChunk     → CHUNK_DATA, chỉ số, độ d
 (lỗi)                                   → ERROR, lý do
 ```
 
-Server chỉ phục vụ `peerId` đã được chấp nhận kết nối, và chặn đường dẫn thoát khỏi thư mục chia sẻ (`../`).
+Server chỉ phục vụ `peerId` đã được chấp nhận kết nối, và chặn đường dẫn thoát khỏi thư mục chia sẻ (`../`, đường dẫn tuyệt đối, symlink trỏ ra ngoài).
+
+### Internet Mode (qua relay)
+
+```
+ Máy A (Wi-Fi, sau NAT)                 Relay công khai (VPS)                Máy B (4G, sau CGNAT)
+ ControlClient/ChunkedFileClient        Caddy :443 (TLS) -> relay :8080      ControlServer/ChunkedFileServer
+        │ TransportRouter                                                          ▲ InternetModeService
+        └── RelayClient ══ wss:// (A chủ động mở ra ngoài) ══╗   ╔══ wss:// (B chủ động mở ra ngoài) ══ RelayClient
+                                                             ╚═══╝ ghép luồng ảo theo mã kết nối
+```
+
+Tầng nghiệp vụ (kết nối, cấp quyền, danh sách file, tìm kiếm, tải theo chunk) **dùng chung cho cả 2 chế độ**; chỉ tầng truyền thông khác nhau: `LanTcpTransport` mở socket TCP, `RelayTransport` mở một *luồng ảo* (có flow control kiểu credit) trên kết nối WebSocket tới relay. Giao thức relay: [docs/NETWORK_ARCHITECTURE.md](docs/NETWORK_ARCHITECTURE.md).
 
 ## Cấu trúc mã nguồn
 
@@ -70,11 +87,17 @@ src/main/java/org/example/p2pfileshare/
 │   ├── discovery/  PeerDiscovery (UDP Multicast)
 │   ├── control/    ControlServer, ControlClient, ControlProtocol
 │   ├── protocol/   FileTransferProtocol
-│   └── transfer/   ChunkedFileServer, ChunkedFileClient, DownloadControl
-├── service/      PeerService, FileShareService, SearchService, DownloadJob,
-│                 DocumentSummaryService, SimpleAIService, HistoryService
-└── util/         AppConfig (Preferences), FileHashUtil, DownloadHistoryManager,
-                  FolderWatcher (theo dõi thư mục), TransferStats (tốc độ, thời gian còn lại)
+│   ├── transfer/   ChunkedFileServer, ChunkedFileClient, DownloadControl
+│   ├── transport/  StreamConnection, PeerTransport, LanTcpTransport, TransportRouter, InboundOrigin
+│   └── relay/      RelayClient (WebSocket), RelayStream (luồng ảo + credit), RelayTransport, IdentityKey (Ed25519)
+├── service/      PeerService, FileShareService, SearchService, DownloadJob, ConnectionService,
+│                 InternetModeService, PeerHealthMonitor (heartbeat), DocumentSummaryService, ...
+└── util/         AppConfig (Preferences), NetworkSettings (timeout cấu hình được), SafePaths,
+                  FileHashUtil, DownloadHistoryManager, FolderWatcher, TransferStats
+
+relay-server/     Relay Server độc lập (Java 17 thuần, không thư viện ngoài), Dockerfile
+  src/shared/java   RelayProtocol: giao thức dùng chung giữa ứng dụng và relay
+deploy/           docker-compose.yml + Caddyfile (wss tự động), mẫu Nginx, systemd, relay.env.example
 ```
 
 ## Chạy ứng dụng
@@ -110,27 +133,50 @@ Có thể mở nhiều cửa sổ trên cùng một máy để thử, vì mỗi 
 - Nếu Wi-Fi vẫn chặn cả hai cách, dùng **➕ Thêm theo IP** và nhập IP máy kia (xem bằng `ipconfig`). App nhớ IP đó cho các lần quét sau.
 - Wi-Fi công cộng hoặc Wi-Fi trường thường bật *client isolation*, chặn mọi kết nối giữa các máy. Khi đó không app nào kết nối được. Hãy dùng hotspot điện thoại hoặc router riêng.
 
+### Kết nối 2 máy ở 2 mạng khác nhau (Internet Mode)
+
+1. Chạy relay ở nơi cả 2 máy cùng truy cập được (chi tiết: [docs/INTERNET_MODE.md](docs/INTERNET_MODE.md)):
+   - VPS có IP công khai: `cd deploy && cp relay.env.example relay.env` (sửa tên miền, khoá bí mật) rồi `docker compose up -d --build`;
+   - không có VPS: trên máy 1 chạy `.\relay.bat -Tunnel` để công khai relay qua Cloudflare Tunnel miễn phí, dùng địa chỉ `wss://….trycloudflare.com/ws` mà script in ra (chế độ này chưa được kiểm thử);
+   - chỉ thử trong cùng mạng: bấm đúp `relay.bat`.
+2. Trên cả 2 máy (máy mới chạy `setup.bat` trước): tab *🌐 Kết nối mạng* → *🌍 Internet* → nhập địa chỉ relay → *🔌 Kết nối relay*.
+3. Máy B đọc **Mã của bạn** (vd. `K7QM-4XZ9`) cho máy A. Máy A nhập vào *Mã máy kia* → *🔗 Kết nối*. Máy B bấm *Chấp nhận*.
+4. Hai máy dùng tab *Kết nối: …*, *Tìm kiếm*, *Lịch sử* như ở chế độ LAN.
+
+Kịch bản kiểm thử thật Wi-Fi + 4G: [docs/CROSS_NETWORK_TEST.md](docs/CROSS_NETWORK_TEST.md).
+
 ### Kịch bản demo
 
 1. Máy A và B mở app, nhập tên.
 2. Máy B: tab *📂 Tài liệu chia sẻ* → chọn thư mục.
-3. Máy A: tab *🌐 Mạng LAN* → *🔄 Quét LAN* → chọn B → *🔗 Kết nối...*. Máy B bấm *Chấp nhận* trong 45 giây (hộp thoại tự đóng và coi như từ chối khi hết giờ). Kết nối là **2 chiều**: cả A và B đều hiện *Đã kết nối*, đều có tab *Kết nối: …* để xem và tải file của nhau. Bấm *Ngắt kết nối* ở bất kỳ máy nào, ở bất kỳ tab nào, thì cả 2 máy cùng ngắt.
+3. Máy A: tab *🌐 Kết nối mạng* (chế độ *🏠 LAN*) → *🔄 Quét LAN* → chọn B → *🔗 Kết nối...*. Máy B bấm *Chấp nhận* trong 45 giây (hộp thoại tự đóng và coi như từ chối khi hết giờ). Kết nối là **2 chiều**: cả A và B đều hiện *Đã kết nối*, đều có tab *Kết nối: …* để xem và tải file của nhau. Bấm *Ngắt kết nối* ở bất kỳ máy nào, ở bất kỳ tab nào, thì cả 2 máy cùng ngắt.
 4. Máy A: tab *Kết nối: B* → *⬇ Tải xuống* (thử Tạm dừng/Tiếp tục), hoặc chuột phải vào file → *✨ Tóm tắt file*.
 5. Máy A: tab *Tìm kiếm* → nhập từ khóa → tải từ kết quả.
 
 ## Kiểm thử
 
 ```
-mvn test
+.\mvnw.cmd clean test          (Windows)     ./mvnw clean test     (Linux/macOS)
+.\mvnw.cmd package
+.\mvnw.cmd -f relay-server\pom.xml package   -> relay-server\target\p2p-relay-server.jar
 ```
 
-Gồm 37 test, trong đó có integration test chạy server và client thật trên localhost:
+Gồm 102 test (2 test symlink tự bỏ qua trên Windows khi không có quyền tạo symlink), trong đó có integration test chạy server và client thật trên localhost:
+
+- **Internet Mode** ([InternetModeIntegrationTest](src/test/java/org/example/p2pfileshare/internet/InternetModeIntegrationTest.java)): relay thật chạy cục bộ; đăng ký, mã kết nối, chấp nhận/từ chối, chặn peer chưa được chấp nhận và mạo danh, liệt kê/tìm kiếm, tải file nhỏ/lớn + SHA-256, tạm dừng/tiếp tục, **rút mạng đột ngột** (proxy giữ socket nhưng ngừng chuyển dữ liệu) rồi tải tiếp, peer offline, relay khởi động lại, mã sai/hết hạn/đoán mò, nhiều peer tải cùng lúc, chặn `../`, WSS/TLS
+- **Relay Server** ([relay-server/src/test](relay-server/src/test/java/org/example/p2prelay)): handshake RFC 6455, chữ ký sai, lệnh trước khi xác thực, frame không mask, chuyển tiếp nhị phân, mã mời, giới hạn số lần thử, link token
 
 - **Kênh truyền file**: tải song song nhiều chunk, file rỗng, từ chối peer chưa được chấp nhận, chặn `../`, dọn file tạm khi hủy
 - **Kênh điều khiển**: chấp nhận/từ chối, không hỏi lại peer cũ, danh sách file có thư mục con, tóm tắt giữ đúng tiếng Việt, chặn tìm kiếm/tóm tắt khi chưa được chấp nhận, ngắt kết nối cả khi peer đã tắt
 - **Service/tiện ích**: chia sẻ thư mục con, bỏ qua file tạm/ẩn, đặt tên không ghi đè, FolderWatcher, lịch sử UTF-8 và file lịch sử hỏng, tốc độ/thời gian còn lại, tóm tắt, phân loại, giao thức
 
 ## Lịch sử phiên bản
+
+**3.0**
+- Internet Mode qua Relay Server (wss), mã kết nối ngắn hạn, xác thực Ed25519, flow control theo luồng
+- Tầng truyền thông tách khỏi tầng nghiệp vụ (`PeerTransport`), LAN Mode giữ nguyên
+- Heartbeat relay + heartbeat peer, tự kết nối lại có backoff, tải tiếp tự động sau khi mất mạng
+- Chặn symlink ra ngoài thư mục chia sẻ, không cho chia sẻ cả ổ đĩa / thư mục người dùng
 
 **2.0**
 - Tự đồng bộ danh sách file, chia sẻ thư mục con, *Thêm tài liệu...* chép file thật

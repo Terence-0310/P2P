@@ -10,14 +10,18 @@ import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.AnchorPane;
+import javafx.scene.layout.VBox;
 import org.example.p2pfileshare.model.PeerInfo;
 import org.example.p2pfileshare.network.control.ControlClient;
 import org.example.p2pfileshare.network.control.ControlProtocol;
 import org.example.p2pfileshare.network.control.ControlServer;
 import org.example.p2pfileshare.service.ConnectionService;
 import org.example.p2pfileshare.service.FileShareService;
+import org.example.p2pfileshare.service.InternetModeService;
+import org.example.p2pfileshare.service.PeerHealthMonitor;
 import org.example.p2pfileshare.service.PeerService;
 import org.example.p2pfileshare.util.AppConfig;
+import org.example.p2pfileshare.util.NetworkSettings;
 import org.example.p2pfileshare.util.WindowsFirewall;
 
 import java.io.IOException;
@@ -34,6 +38,7 @@ public class PeerTabController {
     private FileShareService fileShareService;
     private ControlClient controlClient;
     private ConnectionService connectionService;
+    private PeerHealthMonitor healthMonitor;
     private Label globalStatusLabel;
 
     // peer đang chờ bên kia bấm Chấp nhận (để quét LAN giữa chừng không làm mất trạng thái "Đang kết nối...")
@@ -51,6 +56,14 @@ public class PeerTabController {
     @FXML private Label peerStatusLabel;
     @FXML private Button firewallButton;
 
+    // Chế độ kết nối LAN / Internet
+    @FXML private ToggleButton lanModeButton;
+    @FXML private ToggleButton internetModeButton;
+    @FXML private Label modeHintLabel;
+    @FXML private VBox lanPane;
+    @FXML private Node internetPanel;
+    @FXML private InternetPanelController internetPanelController;
+
     // người dùng đã chọn "không" ở hộp thoại tường lửa -> không hỏi lại mỗi lần mở app
     private static final String FIREWALL_SKIP_KEY = "firewall.skipPrompt";
 
@@ -61,15 +74,29 @@ public class PeerTabController {
                      ControlClient controlClient,
                      ControlServer controlServer,
                      ConnectionService connectionService,
+                     InternetModeService internetMode,
+                     PeerHealthMonitor healthMonitor,
                      Label globalStatusLabel) {
         // nhận các service bên ngoài truyền vào
         this.peerService = peerService;
         this.fileShareService = fileShareService;
         this.controlClient = controlClient;
         this.connectionService = connectionService;
+        this.healthMonitor = healthMonitor;
         this.globalStatusLabel = globalStatusLabel;
 
         setupTable();
+        if (internetPanelController != null) {
+            internetPanelController.init(internetMode, connectionService, healthMonitor,
+                    p -> openConnectedTab(p, true), this::confirmAndDisconnect, globalStatusLabel);
+        }
+        showMode(NetworkSettings.startInInternetMode());
+        // Heartbeat: peer mất mạng / quay lại -> cập nhật bảng và tab của peer đó
+        healthMonitor.addListener((peerId, health) -> Platform.runLater(() -> {
+            peerTable.refresh();
+            ConnectedPeerController ctrl = connectedControllers.get(peerId);
+            if (ctrl != null) ctrl.onPeerHealthChanged(health);
+        }));
         onScanPeers();
         checkFirewallOnStartup();
 
@@ -120,8 +147,17 @@ public class PeerTabController {
                         setStyle("-fx-text-fill: #ff9800; -fx-font-weight: bold;");
                     }
                     case CONNECTED -> {
-                        setText("Đã kết nối");
-                        setStyle("-fx-text-fill: #4caf50; -fx-font-weight: bold;");
+                        PeerInfo row = getTableRow() == null ? null : getTableRow().getItem();
+                        PeerHealthMonitor.Health h = row == null || healthMonitor == null
+                                ? null : healthMonitor.getHealth(row.getPeerId());
+                        if (h == PeerHealthMonitor.Health.OFFLINE) {
+                            // vẫn giữ quyền, máy kia quay lại là dùng tiếp được
+                            setText("Đã kết nối (Offline)");
+                            setStyle("-fx-text-fill: #ff9800; -fx-font-weight: bold;");
+                        } else {
+                            setText("Đã kết nối");
+                            setStyle("-fx-text-fill: #4caf50; -fx-font-weight: bold;");
+                        }
                     }
                     case REJECTED -> {
                         setText("Bị từ chối");
@@ -149,8 +185,10 @@ public class PeerTabController {
 
         task.setOnSucceeded(e -> {
             List<PeerInfo> scanned = new ArrayList<>(task.getValue());
-            // peer đang kết nối nhưng lần quét này không thấy (mạng chặn multicast...) vẫn giữ trong bảng
+            // peer đang kết nối nhưng lần quét này không thấy (mạng chặn multicast...) vẫn giữ trong bảng.
+            // Peer qua Internet hiển thị ở bảng của chế độ Internet.
             for (PeerInfo c : connectionService.getConnectedPeers()) {
+                if (c.isRelay()) continue;
                 if (scanned.stream().noneMatch(p -> p.getPeerId().equals(c.getPeerId()))) scanned.add(c);
             }
 
@@ -287,6 +325,36 @@ public class PeerTabController {
         onScanPeers();
     }
 
+    // CHẾ ĐỘ KẾT NỐI (chỉ đổi khu vực hiển thị; LAN vẫn chạy khi đang ở Internet và ngược lại)
+    @FXML
+    private void onLanMode() {
+        showMode(false);
+        AppConfig.save(NetworkSettings.KEY_CONNECTION_MODE, "lan");
+    }
+
+    @FXML
+    private void onInternetMode() {
+        showMode(true);
+        AppConfig.save(NetworkSettings.KEY_CONNECTION_MODE, "internet");
+    }
+
+    private void showMode(boolean internet) {
+        // ToggleGroup cho phép bỏ chọn nút đang chọn: luôn giữ 1 nút được chọn
+        lanModeButton.setSelected(!internet);
+        internetModeButton.setSelected(internet);
+        lanModeButton.getStyleClass().setAll(internet ? new String[]{"button", "secondary"} : new String[]{"button"});
+        internetModeButton.getStyleClass().setAll(internet ? new String[]{"button"} : new String[]{"button", "secondary"});
+        lanPane.setVisible(!internet);
+        lanPane.setManaged(!internet);
+        if (internetPanel != null) {
+            internetPanel.setVisible(internet);
+            internetPanel.setManaged(internet);
+        }
+        modeHintLabel.setText(internet
+                ? "2 máy ở 2 mạng khác nhau (Wi-Fi nhà, 4G/5G...), kết nối qua relay công khai"
+                : "Các máy dùng chung 1 mạng Wi-Fi / LAN");
+    }
+
 
     // KẾT NỐI PEER
     @FXML
@@ -392,7 +460,7 @@ public class PeerTabController {
 
     private void handleConnected(PeerInfo peer, boolean incoming) {
         pendingPeerIds.remove(peer.getPeerId());
-        upsertPeer(peer);
+        if (!peer.isRelay()) upsertPeer(peer);
         refreshConnectionStates();
         if (incoming) {
             // peer kia gửi yêu cầu, mình đã chấp nhận -> mình cũng có tab xem file của peer đó
@@ -450,6 +518,8 @@ public class PeerTabController {
         for (PeerInfo p : peerList) {
             if (p.getPeerId().equals(peerId)) return p.getName();
         }
+        PeerInfo connected = connectionService.getConnectedPeer(peerId);
+        if (connected != null) return connected.getName();
         Tab tab = connectedTabs.get(peerId);
         return tab != null ? tab.getText().replaceFirst("^Kết nối: ", "") : peerId;
     }

@@ -142,10 +142,17 @@ public class ShareTabController {
     }
 
     // áp dụng thư mục chia sẻ (listener sẽ tự làm mới bảng)
-    private void applyShareFolder(File dir) {
+    private boolean applyShareFolder(File dir) {
+        try {
+            fileShareService.setShareFolder(dir);
+        } catch (IllegalArgumentException e) {
+            // chặn chia sẻ cả ổ đĩa / thư mục người dùng
+            Dialogs.error(sharedFileTable, "Không thể chia sẻ", "Thư mục quá rộng", e.getMessage());
+            return false;
+        }
         shareFolderField.setText(dir.getAbsolutePath());
-        fileShareService.setShareFolder(dir);
         setStatus("Thư mục chia sẻ: " + dir.getName());
+        return true;
     }
 
     @FXML
@@ -159,9 +166,8 @@ public class ShareTabController {
         }
 
         File dir = chooser.showDialog(shareFolderField.getScene().getWindow());
-        if (dir != null) {
+        if (dir != null && applyShareFolder(dir)) {
             AppConfig.save(KEY_SHARE_DIR, dir.getAbsolutePath());
-            applyShareFolder(dir);
         }
     }
 

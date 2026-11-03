@@ -24,6 +24,11 @@ public class ControlProtocol {
     public static final String LIST_FILES_RESPONSE = "LIST_FILES_RESPONSE"; // note: payload dạng key-value được encode
     // Lệnh hệ thống 1 chiều: báo cho peer đang xem kho file của mình rằng danh sách file đã thay đổi
     public static final String CMD_FILES_CHANGED = "CMD:FILES_CHANGED";
+    // Heartbeat giữa 2 peer đã kết nối: PING|from|to -> PONG|to|from|ACCEPTED|NOT_ACCEPTED
+    public static final String PING = "PING";
+    public static final String PONG = "PONG";
+    public static final String PONG_ACCEPTED = "ACCEPTED";
+    public static final String PONG_NOT_ACCEPTED = "NOT_ACCEPTED";
 
     /**
      * Thời gian tối đa (giây) để người nhận bấm Chấp nhận / Từ chối. Hộp thoại tự đóng (= từ chối) khi hết giờ,

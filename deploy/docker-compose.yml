@@ -1,0 +1,48 @@
+# Triển khai Relay Server lên VPS có IP công khai.
+#   1. Trỏ tên miền (bản ghi A) về IP của VPS, mở cổng 80 và 443 trên firewall VPS.
+#   2. cp relay.env.example relay.env  rồi sửa RELAY_DOMAIN, RELAY_LINK_SECRET
+#   3. docker compose up -d --build
+#   4. Trong ứng dụng nhập:  wss://<RELAY_DOMAIN>/ws
+#
+# Caddy nhận wss:// (TLS) ở cổng 443, tự xin / gia hạn chứng chỉ Let's Encrypt, rồi chuyển tiếp WebSocket
+# vào relay qua mạng nội bộ Docker. Cổng 8080 của relay KHÔNG mở ra Internet.
+
+services:
+  relay:
+    build: ../relay-server
+    restart: unless-stopped
+    env_file: relay.env
+    environment:
+      RELAY_PORT: "8080"
+      RELAY_BIND: "0.0.0.0"
+      # relay nằm sau Caddy: lấy IP thật của máy client từ X-Forwarded-For để giới hạn số lần thử theo IP
+      RELAY_TRUST_PROXY: "true"
+    expose:
+      - "8080"
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - relay
+    ports:
+      - "80:80"
+      - "443:443"
+    env_file: relay.env
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

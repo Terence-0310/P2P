@@ -9,16 +9,20 @@ import org.example.p2pfileshare.model.PeerInfo;
 import org.example.p2pfileshare.network.control.ControlClient;
 import org.example.p2pfileshare.network.control.ControlProtocol;
 import org.example.p2pfileshare.network.control.ControlServer;
+import org.example.p2pfileshare.network.relay.IdentityKey;
+import org.example.p2pfileshare.network.transport.TransportRouter;
 import org.example.p2pfileshare.service.ConnectionService;
 import org.example.p2pfileshare.service.FileShareService;
 import org.example.p2pfileshare.service.HistoryService;
+import org.example.p2pfileshare.service.InternetModeService;
+import org.example.p2pfileshare.service.PeerHealthMonitor;
 import org.example.p2pfileshare.service.PeerService;
 import org.example.p2pfileshare.service.SearchService;
 import org.example.p2pfileshare.util.AppConfig;
+import org.example.p2pfileshare.util.NetworkSettings;
 import org.example.p2pfileshare.util.PortFinder;
 
 import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -56,6 +60,12 @@ public class RootController {
     private ControlClient controlClient;
     private ConnectionService connectionService;
 
+    // Tầng truyền thông (LAN TCP / Internet relay), heartbeat và Internet Mode
+    private IdentityKey identity;
+    private final TransportRouter transportRouter = new TransportRouter();
+    private PeerHealthMonitor healthMonitor;
+    private InternetModeService internetMode;
+
     // Peer info
     private String myPeerId;
     private String myName; // displayName
@@ -68,7 +78,9 @@ public class RootController {
     public void initialize() {
         // 1) Hỏi tên peer
         myName = loadOrAskPeerName();
-        myPeerId = UUID.randomUUID().toString();
+        // Khoá Ed25519 mới mỗi lần mở app; peerId = SHA-256(khoá công khai), relay xác thực được bằng chữ ký
+        identity = IdentityKey.generate();
+        myPeerId = identity.peerId();
         historyService = new HistoryService();
 
         // 2) Khởi tạo service
@@ -83,6 +95,9 @@ public class RootController {
         // 3) ControlClient để gửi request CONNECT (gửi peerId, displayName)
         controlClient = new ControlClient(myPeerId, myName);
         controlClient.setMyPorts(CONTROL_PORT, FILE_PORT);
+        // peer LAN đi TCP trực tiếp, peer Internet đi qua relay (chọn theo PeerInfo.Route)
+        controlClient.setTransport(transportRouter);
+        fileShareService.setTransport(transportRouter);
 
         // 4) ControlServer để nhận CONNECT_REQUEST: luồng mạng chờ người dùng bấm Chấp nhận / Từ chối
         controlServer = new ControlServer(CONTROL_PORT, fromPeer -> {
@@ -115,8 +130,17 @@ public class RootController {
 
         // inject FileShareService để phục vụ LIST_FILES
         controlServer.setFileShareService(fileShareService);
-        // Chỉ peer đã được chấp nhận kết nối mới tải được file từ máy mình
-        fileShareService.setAccessChecker(controlServer::isAccepted);
+        // Chỉ peer đã được chấp nhận kết nối (và kết nối đến đúng đường đã chấp nhận) mới tải được file
+        fileShareService.setAccessChecker(controlServer::isAcceptedFrom);
+
+        // Heartbeat tới các peer đang kết nối: phát hiện mất mạng, tự tải tiếp khi peer quay lại
+        healthMonitor = new PeerHealthMonitor(connectionService, controlClient,
+                NetworkSettings.peerHeartbeatSeconds() * 1000L, NetworkSettings.peerTimeoutSeconds() * 1000L);
+        healthMonitor.setOnReachable(fileShareService::retryWaitingDownloads);
+        healthMonitor.start();
+
+        internetMode = new InternetModeService(identity, () -> myName, controlServer, fileShareService,
+                connectionService, transportRouter, healthMonitor);
 
         // Thư mục chia sẻ thay đổi -> báo cho các peer đang xem kho file của mình tự tải lại danh sách
         fileShareService.addFilesChangedListener(() -> {
@@ -179,7 +203,7 @@ public class RootController {
         // Inject service vào UI controllers
         if (peerTabController != null)
             peerTabController.init(peerService, fileShareService, controlClient, controlServer, connectionService,
-                    globalStatusLabel);
+                    internetMode, healthMonitor, globalStatusLabel);
 
         if (shareTabController != null)
             shareTabController.init(fileShareService, globalStatusLabel);
@@ -229,18 +253,19 @@ public class RootController {
                 "Giới thiệu | About",
                 "Ứng dụng truyền file P2P - JavaFX\nP2P File Sharing Application",
                 "🇻🇳 Tiếng Việt:\n"
-                        + "Ứng dụng Desktop truyền file theo mô hình Peer-to-Peer (P2P), "
-                        + "cho phép các máy tính trong cùng mạng LAN chia sẻ và truyền dữ liệu "
-                        + "trực tiếp với nhau mà không cần sử dụng máy chủ trung tâm.\n"
-                        + "Ứng dụng giúp giảm tải hệ thống, tăng tốc độ truyền file "
-                        + "và phục vụ mục đích học tập, nghiên cứu.\n\n"
+                        + "Ứng dụng Desktop chia sẻ file theo mô hình Peer-to-Peer (P2P).\n"
+                        + "• Chế độ LAN: các máy cùng mạng tìm nhau bằng UDP và truyền file TCP trực tiếp.\n"
+                        + "• Chế độ Internet: 2 máy ở 2 mạng khác nhau (Wi-Fi, 4G/5G, sau NAT/CGNAT) kết nối "
+                        + "qua Relay Server bằng WebSocket bảo mật (wss). Đây là mô hình P2P có hỗ trợ chuyển tiếp: "
+                        + "relay chỉ chuyển tiếp dữ liệu theo luồng, không lưu file. TLS bảo vệ đoạn máy ↔ relay, "
+                        + "chưa có mã hoá đầu cuối.\n"
+                        + "Truyền theo chunk 1 MiB, kiểm tra SHA-256, tạm dừng / tiếp tục / tải tiếp sau khi mất mạng.\n\n"
                         + "🇺🇸 English:\n"
-                        + "This is a desktop file transfer application based on the Peer-to-Peer (P2P) model, "
-                        + "allowing computers within the same LAN to share and transfer files directly "
-                        + "without using a centralized server.\n"
-                        + "The application helps reduce system load, improve transfer speed, "
-                        + "and is developed for educational and research purposes.\n\n"
-                        + "Version: 2.1");
+                        + "Peer-to-Peer file sharing desktop application. LAN mode: UDP discovery and direct TCP transfer. "
+                        + "Internet mode: peers on different networks (behind NAT/CGNAT) connect through a relay server "
+                        + "over secure WebSocket (wss). This is relay-assisted P2P: the relay forwards streams and stores "
+                        + "no files; TLS protects each peer-relay hop (no end-to-end encryption yet).\n\n"
+                        + "Version: 3.0");
     }
 
     @FXML
@@ -299,6 +324,14 @@ public class RootController {
             }
 
             // Dừng các server; lỗi ở bước này không được chặn việc thoát app
+            try {
+                internetMode.close();
+            } catch (Exception ignored) {
+            }
+            try {
+                healthMonitor.close();
+            } catch (Exception ignored) {
+            }
             try {
                 controlServer.stop();
             } catch (Exception ignored) {

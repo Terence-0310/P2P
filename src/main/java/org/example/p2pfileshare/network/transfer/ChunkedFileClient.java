@@ -3,20 +3,40 @@ package org.example.p2pfileshare.network.transfer;
 import org.example.p2pfileshare.model.DownloadProgress;
 import org.example.p2pfileshare.model.FileMetadata;
 import org.example.p2pfileshare.network.protocol.FileTransferProtocol;
+import org.example.p2pfileshare.network.transport.ConnectionOpener;
+import org.example.p2pfileshare.network.transport.SocketStreamConnection;
+import org.example.p2pfileshare.network.transport.StreamConnection;
 import org.example.p2pfileshare.util.FileHashUtil;
 
 import java.io.*;
-import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 public class ChunkedFileClient {
+
+    /** Kết quả 1 lượt tải, để DownloadJob quyết định chờ mạng rồi tải tiếp hay báo thất bại */
+    public enum Status {
+        COMPLETED,
+        CANCELLED,
+        /** lỗi mạng / timeout: giữ .part + .bitmap, có thể tải tiếp khi kết nối lại */
+        NETWORK_ERROR,
+        /** peer từ chối (mất quyền, file không còn...): thử lại cũng vô ích */
+        REJECTED,
+        /** cả file sai SHA-256 (file nguồn thay đổi giữa chừng): bitmap đã bị xoá, lần sau tải lại từ đầu */
+        HASH_MISMATCH
+    }
+
+    public record Outcome(Status status, IOException error) {
+        public boolean success() {
+            return status == Status.COMPLETED;
+        }
+    }
 
     private static final int CONNECT_TIMEOUT_MS = 5000;
     private static final int SOCKET_TIMEOUT_MS = 8000;
@@ -46,11 +66,15 @@ public class ChunkedFileClient {
      *   - reason (UTF)
      */
     public static FileMetadata requestMetadata(String host, int port, String myPeerId, String fileName) throws IOException {
-        try (Socket socket = openSocket(host, port)) {
-            socket.setSoTimeout(METADATA_TIMEOUT_MS);
+        return requestMetadata(lanOpener(host, port), myPeerId, fileName);
+    }
+
+    public static FileMetadata requestMetadata(ConnectionOpener opener, String myPeerId, String fileName) throws IOException {
+        try (StreamConnection socket = opener.open()) {
+            socket.setReadTimeout(METADATA_TIMEOUT_MS);
 
             try (DataInputStream in = new DataInputStream(new BufferedInputStream(socket.getInputStream()));
-                 DataOutputStream out = new DataOutputStream(socket.getOutputStream())) {
+                 DataOutputStream out = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()))) {
 
                 // Send request
                 out.writeUTF(FileTransferProtocol.buildMetaRequest(myPeerId, fileName));
@@ -62,7 +86,7 @@ public class ChunkedFileClient {
 
                 if ("ERROR".equals(type)) {
                     String reason = in.readUTF();
-                    throw new IOException("Server error: " + reason);
+                    throw new RemoteRejectedException(reason);
                 }
 
                 if (!FileTransferProtocol.FILE_META_RESPONSE.equals(type)) {
@@ -104,6 +128,23 @@ public class ChunkedFileClient {
     public static boolean downloadFile(String host, int port, String myPeerId, String fileName, Path saveTo,
                                        Consumer<Double> progressCallback, DownloadControl control,
                                        int parallelConnections) throws IOException {
+        return download(lanOpener(host, port), myPeerId, fileName, saveTo, progressCallback, control,
+                parallelConnections).success();
+    }
+
+    private static ConnectionOpener lanOpener(String host, int port) {
+        return () -> SocketStreamConnection.connect(host, port, CONNECT_TIMEOUT_MS);
+    }
+
+    /**
+     * Tải file qua bất kỳ tầng truyền thông nào (TCP trong LAN hoặc luồng relay): opener được gọi để mở
+     * metadata + mỗi kết nối tải song song + mỗi lần mở lại sau lỗi.
+     *
+     * @throws IOException khi không lấy được metadata (không kết nối được, bị từ chối...)
+     */
+    public static Outcome download(ConnectionOpener opener, String myPeerId, String fileName, Path saveTo,
+                                   Consumer<Double> progressCallback, DownloadControl control,
+                                   int parallelConnections) throws IOException {
         int connections = clampParallelConnections(parallelConnections);
 
         // Paths for resume
@@ -114,8 +155,8 @@ public class ChunkedFileClient {
         // địa chỉ lưu bitmap tiến độ, đánh dấu chunk đã tải xong
         Path bitmapFile = Path.of(saveTo.toString() + ".bitmap");
 
-        // 1) Request metadata
-        FileMetadata meta = requestMetadata(host, port, myPeerId, fileName);
+        // 1) Request metadata (mỗi lượt tải đều hỏi lại: file nguồn đổi thì metadata khác -> không ghép nhầm chunk cũ)
+        FileMetadata meta = requestMetadata(opener, myPeerId, fileName);
         System.out.println("[ChunkedFileClient] Metadata: chunks=" + meta.getTotalChunks()
                 + ", size=" + meta.getFileSize() + ", chunkSize=" + meta.getChunkSize());
 
@@ -153,6 +194,7 @@ public class ChunkedFileClient {
         }
 
         AtomicBoolean failed = new AtomicBoolean(false);
+        AtomicReference<IOException> lastError = new AtomicReference<>();
         int workers = Math.max(1, Math.min(connections, pending.size()));
         ExecutorService pool = Executors.newFixedThreadPool(workers, r -> {
             Thread t = new Thread(r, "chunk-worker-" + fileName);
@@ -165,8 +207,8 @@ public class ChunkedFileClient {
             FileChannel channel = raf.getChannel();
             List<Future<?>> futures = new ArrayList<>();
             for (int w = 0; w < workers; w++) {
-                futures.add(pool.submit(() -> runWorker(host, port, myPeerId, fileName, meta, pending,
-                        channel, progress, bitmapFile, progressCallback, control, failed)));
+                futures.add(pool.submit(() -> runWorker(opener, myPeerId, fileName, meta, pending,
+                        channel, progress, bitmapFile, progressCallback, control, failed, lastError)));
             }
             for (Future<?> f : futures) {
                 try {
@@ -186,11 +228,12 @@ public class ChunkedFileClient {
         // CANCEL: dọn file tạm (sau khi đã đóng file .part)
         if (control != null && control.isCancelled()) {
             cleanupOnCancel(partFile, bitmapFile, metaFile);
-            return false;
+            return new Outcome(Status.CANCELLED, null);
         }
         if (failed.get()) {
             System.err.println("[ChunkedFileClient] Download failed, giữ lại .part để resume lần sau");
-            return false;
+            IOException err = lastError.get();
+            return new Outcome(err instanceof RemoteRejectedException ? Status.REJECTED : Status.NETWORK_ERROR, err);
         }
 
         // 7) Verify whole file hash (final integrity)
@@ -198,7 +241,7 @@ public class ChunkedFileClient {
             if (control != null) control.checkpoint(); // trước khi verify
         } catch (InterruptedException e) {
             cleanupOnCancel(partFile, bitmapFile, metaFile);
-            return false;
+            return new Outcome(Status.CANCELLED, null);
         }
         String actualHash = FileHashUtil.sha256(partFile);
         if (!actualHash.equals(meta.getFileSha256())) {
@@ -206,7 +249,7 @@ public class ChunkedFileClient {
                     + " actual=" + actualHash);
             // bitmap không còn đáng tin -> lần sau tải lại từ đầu
             safeDelete(bitmapFile);
-            return false;
+            return new Outcome(Status.HASH_MISMATCH, new IOException("SHA-256 của file không khớp"));
         }
 
         // 8) Rename & cleanup
@@ -215,17 +258,18 @@ public class ChunkedFileClient {
         safeDelete(metaFile);
 
         System.out.println("[ChunkedFileClient] Download complete: " + saveTo);
-        return true;
+        return new Outcome(Status.COMPLETED, null);
     }
 
     /**
      * 1 worker: giữ 1 kết nối TCP, lần lượt lấy chunk còn thiếu trong hàng đợi để tải.
      * Lỗi mạng -> đóng kết nối, mở lại và thử tối đa MAX_RETRIES lần cho mỗi chunk.
      */
-    private static void runWorker(String host, int port, String myPeerId, String fileName, FileMetadata meta,
+    private static void runWorker(ConnectionOpener opener, String myPeerId, String fileName, FileMetadata meta,
                                   Queue<Integer> pending, FileChannel channel, DownloadProgress progress,
                                   Path bitmapFile, Consumer<Double> progressCallback,
-                                  DownloadControl control, AtomicBoolean failed) {
+                                  DownloadControl control, AtomicBoolean failed,
+                                  AtomicReference<IOException> lastError) {
         ChunkConnection conn = null;
         try {
             Integer chunkIndex;
@@ -236,7 +280,7 @@ public class ChunkedFileClient {
                     // checkpoint trước khi request (pause sẽ chờ ở đây, cancel sẽ ném exception)
                     if (control != null) control.checkpoint();
                     try {
-                        if (conn == null) conn = new ChunkConnection(host, port);
+                        if (conn == null) conn = new ChunkConnection(opener.open());
                         data = conn.fetchChunk(myPeerId, fileName, chunkIndex, meta);
                         if (data == null) {
                             System.err.println("[ChunkedFileClient] Chunk " + chunkIndex + " hash mismatch (retry "
@@ -245,13 +289,17 @@ public class ChunkedFileClient {
                     } catch (IOException e) {
                         System.err.println("[ChunkedFileClient] Chunk " + chunkIndex + " error (retry "
                                 + retry + "/" + MAX_RETRIES + "): " + e.getMessage());
+                        lastError.set(e);
                         closeQuietly(conn);
                         conn = null;
+                        // bị từ chối thì thử lại cũng vậy
+                        if (e instanceof RemoteRejectedException) break;
                     }
                 }
 
                 if (data == null) {
                     System.err.println("[ChunkedFileClient] Failed to download chunk " + chunkIndex);
+                    lastError.compareAndSet(null, new IOException("Chunk " + chunkIndex + " sai SHA-256 nhiều lần"));
                     failed.set(true);
                     return;
                 }
@@ -280,23 +328,29 @@ public class ChunkedFileClient {
             failed.set(true);
         } catch (IOException e) {
             System.err.println("[ChunkedFileClient] Write error: " + e.getMessage());
+            lastError.set(e);
             failed.set(true);
         } finally {
             closeQuietly(conn);
         }
     }
 
-    /** Kết nối TCP dùng lại cho nhiều request GET_CHUNK liên tiếp */
+    /** Kết nối (TCP hoặc luồng relay) dùng lại cho nhiều request GET_CHUNK liên tiếp */
     private static final class ChunkConnection implements Closeable {
-        private final Socket socket;
+        private final StreamConnection socket;
         private final DataInputStream in;
         private final DataOutputStream out;
 
-        ChunkConnection(String host, int port) throws IOException {
-            socket = openSocket(host, port);
-            socket.setSoTimeout(SOCKET_TIMEOUT_MS);
-            in = new DataInputStream(new BufferedInputStream(socket.getInputStream()));
-            out = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()));
+        ChunkConnection(StreamConnection socket) throws IOException {
+            this.socket = socket;
+            try {
+                socket.setReadTimeout(SOCKET_TIMEOUT_MS);
+                in = new DataInputStream(new BufferedInputStream(socket.getInputStream()));
+                out = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()));
+            } catch (IOException e) {
+                socket.close();
+                throw e;
+            }
         }
 
         /**
@@ -320,7 +374,7 @@ public class ChunkedFileClient {
 
             String type = in.readUTF();
             if ("ERROR".equals(type)) {
-                throw new IOException("Server error: " + in.readUTF());
+                throw new RemoteRejectedException(in.readUTF());
             }
             if (!FileTransferProtocol.CHUNK_DATA.equals(type)) {
                 throw new IOException("Unexpected response type: " + type);
@@ -364,17 +418,6 @@ public class ChunkedFileClient {
 
     static int clampParallelConnections(int requested) {
         return Math.max(1, Math.min(MAX_PARALLEL_CONNECTIONS, requested));
-    }
-
-    private static Socket openSocket(String host, int port) throws IOException {
-        Socket socket = new Socket();
-        try {
-            socket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MS);
-            return socket;
-        } catch (IOException e) {
-            socket.close();
-            throw e;
-        }
     }
 
     private static void closeQuietly(Closeable c) {

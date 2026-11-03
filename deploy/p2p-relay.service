@@ -1,0 +1,28 @@
+# Chạy relay bằng systemd (VPS không dùng Docker), đi kèm nginx-relay.conf.example.
+#   sudo useradd --system --no-create-home relay
+#   sudo mkdir -p /opt/p2p-relay && sudo cp p2p-relay-server.jar /opt/p2p-relay/
+#   sudo cp relay.env /etc/p2p-relay.env && sudo chmod 600 /etc/p2p-relay.env
+#   sudo cp p2p-relay.service /etc/systemd/system/ && sudo systemctl enable --now p2p-relay
+#   journalctl -u p2p-relay -f     (xem log)
+
+[Unit]
+Description=P2PFileShare Relay Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=relay
+EnvironmentFile=/etc/p2p-relay.env
+Environment=RELAY_BIND=127.0.0.1
+Environment=RELAY_PORT=8080
+Environment=RELAY_TRUST_PROXY=true
+ExecStart=/usr/bin/java -Xmx256m -jar /opt/p2p-relay/p2p-relay-server.jar
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

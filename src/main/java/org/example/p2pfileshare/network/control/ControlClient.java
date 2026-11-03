@@ -1,10 +1,12 @@
 package org.example.p2pfileshare.network.control;
 
 import org.example.p2pfileshare.model.PeerInfo;
+import org.example.p2pfileshare.network.transport.Channel;
+import org.example.p2pfileshare.network.transport.LanTcpTransport;
+import org.example.p2pfileshare.network.transport.PeerTransport;
+import org.example.p2pfileshare.network.transport.StreamConnection;
 
 import java.io.*;
-import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -13,8 +15,17 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class ControlClient {
 
-    // Thời gian chờ mở kết nối: peer đã tắt máy thì báo lỗi nhanh thay vì treo ~20s
-    private static final int CONNECT_TIMEOUT_MS = 3000;
+    /** Kết quả heartbeat tới 1 peer */
+    public enum PingResult {
+        /** peer trả lời và vẫn chấp nhận mình */
+        OK,
+        /** peer trả lời nhưng không còn chấp nhận mình (vd. đã khởi động lại ứng dụng) */
+        NOT_ACCEPTED,
+        /** không liên lạc được (mất mạng, tắt máy, relay không chuyển được) */
+        UNREACHABLE
+    }
+
+    private static final int PING_TIMEOUT_MS = 5000;
     // Chờ người bên kia bấm Chấp nhận / Từ chối: lâu hơn thời gian hộp thoại bên kia tự đóng,
     // để không xảy ra cảnh bên kia đã chấp nhận còn bên mình đã bỏ cuộc
     private static final int CONNECT_DECISION_TIMEOUT_MS = (ControlProtocol.CONNECT_DECISION_SECONDS + 15) * 1000;
@@ -31,6 +42,9 @@ public class ControlClient {
     // Giữ cả PeerInfo để gửi lệnh tiếp theo mà không phải quét LAN lại.
     private final Map<String, PeerInfo> connectedPeers = new ConcurrentHashMap<>();
 
+    // Mặc định TCP trong LAN; RootController gắn TransportRouter để peer Internet đi qua relay
+    private volatile PeerTransport transport = new LanTcpTransport();
+
     public ControlClient(String myPeerId, String myDisplayName) {
         this.myPeerId = myPeerId;
         this.myDisplayName = myDisplayName;
@@ -38,6 +52,10 @@ public class ControlClient {
 
     public void setMyDisplayName(String myDisplayName) {
         this.myDisplayName = myDisplayName;
+    }
+
+    public void setTransport(PeerTransport transport) {
+        if (transport != null) this.transport = transport;
     }
 
     /** Cổng của mình, gửi kèm CONNECT_REQUEST để peer kia liên lạc lại được dù chưa quét LAN thấy mình */
@@ -48,13 +66,10 @@ public class ControlClient {
 
     // Format: CONNECT_REQUEST|myId|toId|displayName|controlPort|filePort
     public boolean sendConnectRequest(PeerInfo peer) {
-        String host = peer.getIp();
-        int controlPort = peer.getControlPort();
         String toPeer = peer.getPeerId();
-        System.out.println("[ControlClient] Connecting to " + host + ":" + controlPort +
-                " to request connect → " + toPeer);
+        System.out.println("[ControlClient] Connecting to " + describe(peer) + " to request connect → " + toPeer);
 
-        try (Socket socket = openSocket(host, controlPort, CONNECT_DECISION_TIMEOUT_MS);
+        try (StreamConnection socket = open(peer, CONNECT_DECISION_TIMEOUT_MS);
              BufferedReader reader = readerOf(socket);
              PrintWriter writer = writerOf(socket)) {
 
@@ -75,7 +90,7 @@ public class ControlClient {
             }
 
             ControlProtocol.ParsedMessage parsed = ControlProtocol.parse(respRaw);
-            if (parsed == null || !myPeerId.equals(parsed.toPeer)) {
+            if (parsed == null || !myPeerId.equals(parsed.toPeer) || !toPeer.equals(parsed.fromPeer)) {
                 return false;
             }
 
@@ -96,7 +111,7 @@ public class ControlClient {
         System.out.println("[ControlClient] Request LIST_FILES → " + toPeer);
         List<RemoteFile> files = new ArrayList<>();
 
-        try (Socket socket = openSocket(peer.getIp(), peer.getControlPort(), DEFAULT_READ_TIMEOUT_MS);
+        try (StreamConnection socket = open(peer, DEFAULT_READ_TIMEOUT_MS);
              BufferedReader reader = readerOf(socket);
              PrintWriter writer = writerOf(socket)) {
 
@@ -137,11 +152,10 @@ public class ControlClient {
     public boolean sendDisconnectRequest(PeerInfo peer) {
         if (peer == null) return false;
         String toPeer = peer.getPeerId();
-        System.out.println("[ControlClient] Sending DISCONNECT_REQUEST to " + peer.getIp() + ":"
-                + peer.getControlPort() + " -> " + toPeer);
+        System.out.println("[ControlClient] Sending DISCONNECT_REQUEST to " + describe(peer) + " -> " + toPeer);
         connectedPeers.remove(toPeer);
 
-        try (Socket socket = openSocket(peer.getIp(), peer.getControlPort(), DEFAULT_READ_TIMEOUT_MS);
+        try (StreamConnection socket = open(peer, DEFAULT_READ_TIMEOUT_MS);
              BufferedReader reader = readerOf(socket);
              PrintWriter writer = writerOf(socket)) {
 
@@ -171,7 +185,7 @@ public class ControlClient {
     public String sendSummarizeRequest(PeerInfo peer, String relativePath) {
         if (peer == null) return null;
         System.out.println("[ControlClient] Gửi yêu cầu AI Summary tới " + peer.getName());
-        try (Socket socket = openSocket(peer.getIp(), peer.getControlPort(), SUMMARIZE_TIMEOUT_MS);
+        try (StreamConnection socket = open(peer, SUMMARIZE_TIMEOUT_MS);
              BufferedReader reader = readerOf(socket);
              PrintWriter writer = writerOf(socket)) {
 
@@ -207,8 +221,28 @@ public class ControlClient {
         sendSystemCommand(peer, ControlProtocol.CMD_FILES_CHANGED + "|*");
     }
 
-    private boolean sendOneWay(String host, int port, String msg) {
-        try (Socket socket = openSocket(host, port, DEFAULT_READ_TIMEOUT_MS);
+    /**
+     * Heartbeat: kiểm tra peer còn liên lạc được và còn chấp nhận mình không.
+     * Dùng để phát hiện peer mất mạng / tắt app đột ngột (không kịp gửi DISCONNECT).
+     */
+    public PingResult ping(PeerInfo peer) {
+        if (peer == null) return PingResult.UNREACHABLE;
+        try (StreamConnection socket = open(peer, PING_TIMEOUT_MS);
+             BufferedReader reader = readerOf(socket);
+             PrintWriter writer = writerOf(socket)) {
+            writer.println(ControlProtocol.build(ControlProtocol.PING, myPeerId, peer.getPeerId()));
+            ControlProtocol.ParsedMessage resp = ControlProtocol.parse(reader.readLine());
+            if (resp == null || !ControlProtocol.PONG.equals(resp.command) || !myPeerId.equals(resp.toPeer)) {
+                return PingResult.UNREACHABLE;
+            }
+            return ControlProtocol.PONG_ACCEPTED.equals(resp.note) ? PingResult.OK : PingResult.NOT_ACCEPTED;
+        } catch (IOException e) {
+            return PingResult.UNREACHABLE;
+        }
+    }
+
+    private boolean sendOneWay(PeerInfo peer, String msg) {
+        try (StreamConnection socket = open(peer, DEFAULT_READ_TIMEOUT_MS);
              PrintWriter writer = writerOf(socket)) {
 
             writer.println(msg);
@@ -216,7 +250,7 @@ public class ControlClient {
             return true;
 
         } catch (IOException e) {
-            System.err.println("[ControlClient] One-way send to " + host + ":" + port + " failed: " + e.getMessage());
+            System.err.println("[ControlClient] One-way send to " + describe(peer) + " failed: " + e.getMessage());
             return false;
         }
     }
@@ -231,7 +265,7 @@ public class ControlClient {
         String finalMsg = parts[0] + "|" + myPeerId + "|" + parts[1];
 
         System.out.println("[ControlClient] Sending System Cmd to " + peer.getName() + ": " + finalMsg);
-        return sendOneWay(peer.getIp(), peer.getControlPort(), finalMsg);
+        return sendOneWay(peer, finalMsg);
     }
 
     public void broadcastUpdateName(List<PeerInfo> peers, String newName) {
@@ -253,7 +287,7 @@ public class ControlClient {
         for (PeerInfo p : peers) {
             // tránh gửi cho chính mình nếu list có chứa mình
             if (p == null || myPeerId.equals(p.getPeerId())) continue;
-            sendOneWay(p.getIp(), p.getControlPort(), msg);
+            sendOneWay(p, msg);
         }
     }
 
@@ -283,24 +317,28 @@ public class ControlClient {
 
     // ---------------- helpers ----------------
 
-    private static Socket openSocket(String host, int port, int readTimeoutMs) throws IOException {
-        Socket socket = new Socket();
+    /** Mở kênh điều khiển tới peer qua tầng truyền thông (TCP trong LAN hoặc luồng ảo qua relay) */
+    private StreamConnection open(PeerInfo peer, int readTimeoutMs) throws IOException {
+        StreamConnection c = transport.open(peer, Channel.CONTROL);
         try {
-            socket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MS);
-            socket.setSoTimeout(readTimeoutMs);
-            return socket;
+            c.setReadTimeout(readTimeoutMs);
+            return c;
         } catch (IOException e) {
-            socket.close();
+            c.close();
             throw e;
         }
     }
 
-    private static BufferedReader readerOf(Socket socket) throws IOException {
+    private static String describe(PeerInfo peer) {
+        return peer.isRelay() ? "relay:" + peer.getPeerId() : peer.getIp() + ":" + peer.getControlPort();
+    }
+
+    private static BufferedReader readerOf(StreamConnection socket) throws IOException {
         return new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
     }
 
-    private static PrintWriter writerOf(Socket socket) throws IOException {
-        return new PrintWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8), true);
+    private static PrintWriter writerOf(StreamConnection socket) throws IOException {
+        return new PrintWriter(new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8)), true);
     }
 
     // DTO đơn giản cho UI
