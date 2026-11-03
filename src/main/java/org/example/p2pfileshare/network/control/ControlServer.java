@@ -2,8 +2,12 @@ package org.example.p2pfileshare.network.control;
 
 import org.example.p2pfileshare.model.PeerInfo;
 import org.example.p2pfileshare.model.SharedFileLocal;
+import org.example.p2pfileshare.network.transport.InboundOrigin;
+import org.example.p2pfileshare.network.transport.SocketStreamConnection;
+import org.example.p2pfileshare.network.transport.StreamConnection;
 import org.example.p2pfileshare.service.DocumentSummaryService;
 import org.example.p2pfileshare.service.FileShareService;
+import org.example.p2pfileshare.util.SafePaths;
 
 import java.io.*;
 import java.net.ServerSocket;
@@ -101,7 +105,8 @@ public class ControlServer {
                 while (running) {
                     Socket client = ss.accept();
                     try {
-                        handlers.execute(() -> handleClient(client));
+                        handlers.execute(() -> handleConnection(new SocketStreamConnection(client),
+                                InboundOrigin.lan(client.getInetAddress().getHostAddress())));
                     } catch (RejectedExecutionException e) {
                         client.close(); // đang dừng server
                     }
@@ -134,21 +139,64 @@ public class ControlServer {
         return peerId != null && acceptedPeers.contains(peerId);
     }
 
-    private void handleClient(Socket socket) {
-        try (Socket s = socket;
+    /**
+     * Đã chấp nhận peer VÀ kết nối đến đúng đường đã chấp nhận: peer được chấp nhận qua relay (danh tính đã xác thực)
+     * thì không được dùng lại id đó từ 1 kết nối LAN chưa xác thực, và ngược lại.
+     */
+    public boolean isAcceptedFrom(String peerId, InboundOrigin origin) {
+        if (!isAccepted(peerId) || !origin.permitsClaimedId(peerId)) return false;
+        PeerInfo info = acceptedPeerInfo.get(peerId);
+        PeerInfo.Route acceptedRoute = info == null ? PeerInfo.Route.LAN : info.getRoute();
+        return acceptedRoute == origin.route();
+    }
+
+    /** Nhận 1 kết nối không qua ServerSocket (luồng ảo từ relay), xử lý trên pool của server */
+    public void acceptExternal(StreamConnection conn, InboundOrigin origin) {
+        ExecutorService pool = handlers;
+        try {
+            if (!running || pool == null) throw new RejectedExecutionException();
+            pool.execute(() -> handleConnection(conn, origin));
+        } catch (RejectedExecutionException e) {
+            try {
+                conn.close();
+            } catch (IOException ignored) {
+            }
+        }
+    }
+
+    private void handleConnection(StreamConnection conn, InboundOrigin origin) {
+        try (StreamConnection s = conn;
              BufferedReader reader = new BufferedReader(new InputStreamReader(s.getInputStream(), StandardCharsets.UTF_8));
              PrintWriter writer = new PrintWriter(new OutputStreamWriter(s.getOutputStream(), StandardCharsets.UTF_8), true)) {
 
             // client luôn gửi request ngay sau khi kết nối, không để thread treo vô hạn
-            s.setSoTimeout(15_000);
-            String remoteIp = s.getInetAddress().getHostAddress();
+            s.setReadTimeout(15_000);
+            String remoteIp = origin.remoteAddress();
 
             String raw = reader.readLine();
             if (raw == null || raw.isEmpty()) return;
 
+            // Mọi lệnh đều có dạng LỆNH|idNgườiGửi|...: qua relay thì id người gửi phải đúng danh tính relay đã xác thực
+            String[] head = raw.split("\\|", 3);
+            if (head.length < 2 || !origin.permitsClaimedId(head[1])) {
+                out.println("[ControlServer] Bỏ lệnh mạo danh từ " + s.describeRemote());
+                return;
+            }
+
+            if (raw.startsWith(ControlProtocol.PING + "|")) {
+                // Heartbeat: PING|from|to -> PONG|to|from|ACCEPTED (hoặc NOT_ACCEPTED nếu mình đã quên peer này)
+                ControlProtocol.ParsedMessage ping = ControlProtocol.parse(raw);
+                if (ping != null) {
+                    writer.println(ControlProtocol.build(ControlProtocol.PONG, ping.toPeer, ping.fromPeer,
+                            isAcceptedFrom(ping.fromPeer, origin) ? ControlProtocol.PONG_ACCEPTED
+                                    : ControlProtocol.PONG_NOT_ACCEPTED));
+                }
+                return;
+            }
+
             if (raw.startsWith("SEARCH_REQ|") || raw.startsWith("SEARCH_RES|")) {
                 out.println("[ControlServer] Received Search CMD: " + raw);
-                handleSearchCommand(raw);
+                handleSearchCommand(raw, origin);
                 return;
             }
 
@@ -164,7 +212,7 @@ public class ControlServer {
                     File fileToSummarize = resolveSharedFile(path);
                     String result;
 
-                    if (!acceptedPeers.contains(senderId)) {
+                    if (!isAcceptedFrom(senderId, origin)) {
                         result = "Bạn chưa được peer này chấp nhận kết nối.";
                     } else if (fileToSummarize != null) {
                         try {
@@ -209,13 +257,14 @@ public class ControlServer {
                 int filePort = msg.parts.length > 5 ? tryParseInt(msg.parts[5], -1) : -1;
 
                 boolean accept;
-                if (acceptedPeers.contains(fromPeer)) {
+                if (isAcceptedFrom(fromPeer, origin)) {
                     // đã chấp nhận trước đó (vd. bên kia đóng tab rồi kết nối lại) -> không hỏi lại
                     accept = true;
                 } else if (onIncomingConnect != null) {
                     long askedAt = System.currentTimeMillis();
+                    String shownName = origin.route() == PeerInfo.Route.RELAY ? displayName + " (qua Internet)" : displayName;
                     try {
-                        accept = Boolean.TRUE.equals(onIncomingConnect.apply(displayName));
+                        accept = Boolean.TRUE.equals(onIncomingConnect.apply(shownName));
                     } catch (Exception ex) {
                         accept = false;
                     }
@@ -230,7 +279,7 @@ public class ControlServer {
 
                 // đăng ký trước khi trả lời: bên kia nhận ACCEPT xong sẽ gửi LIST_FILES ngay
                 if (accept) {
-                    registerAcceptedPeer(fromPeer, displayName, remoteIp, ctrlPort, filePort);
+                    registerAcceptedPeer(fromPeer, displayName, origin, remoteIp, ctrlPort, filePort);
                 }
 
                 String respCmd  = accept ? ControlProtocol.CONNECT_ACCEPT : ControlProtocol.CONNECT_REJECT;
@@ -264,7 +313,7 @@ public class ControlServer {
                 String toPeer   = msg.toPeer;   // mình
                 String fromPeer = msg.fromPeer; // client
                 // CHẶN NẾU CHƯA ĐƯỢC ACCEPT
-                if (!acceptedPeers.contains(fromPeer)) {
+                if (!isAcceptedFrom(fromPeer, origin)) {
                     String denyResp = ControlProtocol.build(
                             ControlProtocol.LIST_FILES_RESPONSE,
                             msg.toPeer,
@@ -290,6 +339,10 @@ public class ControlServer {
                     || ControlProtocol.DISCONNECT_NOTIFY.equals(msg.command)) {
                 // Peer kia ngắt kết nối (DISCONNECT_NOTIFY: peer bản cũ chặn mình) -> ngắt cả 2 chiều
                 String fromPeer = msg.fromPeer;
+                if (isAccepted(fromPeer) && !isAcceptedFrom(fromPeer, origin)) {
+                    out.println("[ControlServer] Bỏ DISCONNECT từ đường khác với đường đã chấp nhận: " + fromPeer);
+                    return;
+                }
                 removeAcceptedPeer(fromPeer);
                 if (ControlProtocol.DISCONNECT_REQUEST.equals(msg.command)) {
                     // xác nhận đã ngắt
@@ -305,6 +358,7 @@ public class ControlServer {
                 // Format: UPDATE_NAME|fromId|tênMới (trường thứ 3 là tên mới, không phải peer đích)
                 out.println("[ControlServer] Received UPDATE_NAME from " + msg.fromPeer + " new name: " + msg.toPeer);
 
+                if (!isAcceptedFrom(msg.fromPeer, origin)) return;
                 PeerInfo info = acceptedPeerInfo.get(msg.fromPeer);
                 if (info != null) {
                     info.setDisplayName(msg.toPeer);
@@ -326,7 +380,7 @@ public class ControlServer {
     }
 
     // XỬ LÝ LỆNH TÌM KIẾM
-    private void handleSearchCommand(String raw) {
+    private void handleSearchCommand(String raw, InboundOrigin origin) {
         // Format: SEARCH_REQ|SenderID|Keyword
         // Format: SEARCH_RES|SenderID|FileData
         String[] parts = raw.split("\\|", 3);
@@ -338,7 +392,7 @@ public class ControlServer {
 
         if ("SEARCH_REQ".equals(cmd)) {
             // Chỉ trả lời peer đã được chấp nhận kết nối
-            if (!acceptedPeers.contains(senderId)) {
+            if (!isAcceptedFrom(senderId, origin)) {
                 out.println("[ControlServer] Ignored SEARCH_REQ from unaccepted peer " + senderId);
                 return;
             }
@@ -372,25 +426,25 @@ public class ControlServer {
         return sb.toString();
     }
 
-    // File nằm trong thư mục chia sẻ (chặn "../" thoát ra ngoài), null nếu không hợp lệ
+    // File nằm trong thư mục chia sẻ (chặn "../", đường dẫn tuyệt đối, symlink ra ngoài), null nếu không hợp lệ
     private File resolveSharedFile(String relativePath) {
-        if (fileShareService == null || fileShareService.getShareFolder() == null || relativePath == null) {
-            return null;
-        }
-        Path root = fileShareService.getShareFolder().toPath().toAbsolutePath().normalize();
-        Path target = root.resolve(relativePath).normalize();
-        if (!target.startsWith(root) || !target.toFile().isFile()) return null;
-        return target.toFile();
+        if (fileShareService == null || fileShareService.getShareFolder() == null) return null;
+        Path p = SafePaths.resolveSharedFile(fileShareService.getShareFolder().toPath(), relativePath);
+        return p == null ? null : p.toFile();
     }
 
     private String safe(String s) {
         if (s == null) return "";
         return s.replace("\t", " ").replace("\n", " ");
     }
-    private void registerAcceptedPeer(String peerId, String displayName, String ip, int ctrlPort, int filePort) {
+    private void registerAcceptedPeer(String peerId, String displayName, InboundOrigin origin, String ip,
+                                      int ctrlPort, int filePort) {
         acceptedPeers.add(peerId);
         acceptedAt.putIfAbsent(peerId, LocalDateTime.now());
-        if (ctrlPort > 0) {
+        if (origin.route() == PeerInfo.Route.RELAY) {
+            // peer ở mạng khác: liên lạc lại qua relay theo danh tính đã xác thực, không cần IP/cổng
+            acceptedPeerInfo.put(peerId, PeerInfo.viaRelay(peerId, displayName));
+        } else if (ctrlPort > 0) {
             acceptedPeerInfo.put(peerId, new PeerInfo(peerId, displayName, ip, filePort, ctrlPort, "Online"));
         }
     }

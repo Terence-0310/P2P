@@ -3,6 +3,7 @@ module org.example.p2pfileshare {
     requires javafx.fxml;
     requires javafx.graphics;
     requires java.prefs;
+    requires java.net.http; // WebSocket client tới Relay Server (Internet Mode)
     requires com.google.gson;
     requires org.apache.pdfbox;
     requires org.apache.poi.ooxml;

@@ -1,7 +1,11 @@
 package org.example.p2pfileshare.network.transfer;
 
 import org.example.p2pfileshare.network.protocol.FileTransferProtocol;
+import org.example.p2pfileshare.network.transport.InboundOrigin;
+import org.example.p2pfileshare.network.transport.SocketStreamConnection;
+import org.example.p2pfileshare.network.transport.StreamConnection;
 import org.example.p2pfileshare.util.FileHashUtil;
+import org.example.p2pfileshare.util.SafePaths;
 
 import java.io.*;
 import java.net.ServerSocket;
@@ -19,6 +23,12 @@ import java.util.function.Predicate;
 
 public class ChunkedFileServer {
 
+    /** Quyết định peer (id khai báo trong lệnh + nguồn kết nối) có được tải file không */
+    @FunctionalInterface
+    public interface AccessChecker {
+        boolean isAllowed(String peerId, InboundOrigin origin);
+    }
+
     private final int port;
     private final AtomicReference<Path> shareFolder = new AtomicReference<>();
     private static final int DEFAULT_CHUNK_SIZE = 1024 * 1024; // 1 MB
@@ -27,10 +37,10 @@ public class ChunkedFileServer {
     private static final int IDLE_TIMEOUT_MS = 60_000;
 
     // Đỡ tạo vô hạn thread; tạo khi start()
-    private ExecutorService pool;
+    private volatile ExecutorService pool;
 
     // Kiểm tra peerId đã được chấp nhận kết nối chưa (null = cho phép tất cả)
-    private final Predicate<String> accessChecker;
+    private final AccessChecker accessChecker;
 
     // Cache metadata để không phải băm lại toàn bộ file mỗi lần có người tải
     private final ConcurrentHashMap<Path, CachedMeta> metaCache = new ConcurrentHashMap<>();
@@ -43,10 +53,14 @@ public class ChunkedFileServer {
     private Thread serverThread;
 
     public ChunkedFileServer(int port, Path initialFolder) {
-        this(port, initialFolder, null);
+        this(port, initialFolder, (AccessChecker) null);
     }
 
     public ChunkedFileServer(int port, Path initialFolder, Predicate<String> accessChecker) {
+        this(port, initialFolder, accessChecker == null ? null : (id, origin) -> accessChecker.test(id));
+    }
+
+    public ChunkedFileServer(int port, Path initialFolder, AccessChecker accessChecker) {
         this.port = port;
         this.accessChecker = accessChecker;
         changeFolder(initialFolder);
@@ -104,7 +118,8 @@ public class ChunkedFileServer {
             while (running) {
                 try {
                     Socket client = serverSocket.accept();
-                    pool.submit(() -> handleClient(client));
+                    pool.submit(() -> handleConnection(new SocketStreamConnection(client),
+                            InboundOrigin.lan(client.getInetAddress().getHostAddress())));
                 } catch (SocketException se) {
                     // thường xảy ra khi stopServer() -> serverSocket.close()
                     if (running) {
@@ -177,13 +192,51 @@ public class ChunkedFileServer {
         }
     }
 
+    /**
+     * Nhận 1 kết nối không đi qua ServerSocket (luồng ảo từ relay). Chạy trên pool của server,
+     * server đã dừng thì đóng luôn.
+     */
+    public void acceptExternal(StreamConnection conn, InboundOrigin origin) {
+        ExecutorService p = pool;
+        if (!running || p == null) {
+            closeQuietly(conn);
+            return;
+        }
+        try {
+            p.submit(() -> handleConnection(conn, origin));
+        } catch (RejectedExecutionException e) {
+            closeQuietly(conn);
+        }
+    }
+
+    /** Trả lời ERROR cho request đầu tiên rồi đóng (dùng khi chưa chọn thư mục chia sẻ) */
+    public static void rejectConnection(StreamConnection conn, String reason) {
+        try (StreamConnection c = conn;
+             DataInputStream in = new DataInputStream(new BufferedInputStream(c.getInputStream()));
+             DataOutputStream out = new DataOutputStream(new BufferedOutputStream(c.getOutputStream()))) {
+            c.setReadTimeout(10_000);
+            in.readUTF();
+            out.writeUTF("ERROR");
+            out.writeUTF(reason);
+            out.flush();
+        } catch (IOException ignored) {
+        }
+    }
+
+    private static void closeQuietly(StreamConnection c) {
+        try {
+            c.close();
+        } catch (IOException ignored) {
+        }
+    }
+
     // Một kết nối có thể gửi nhiều request liên tiếp (client giữ kết nối để tải nhiều chunk)
-    private void handleClient(Socket socket) {
-        try (Socket s = socket;
+    private void handleConnection(StreamConnection conn, InboundOrigin origin) {
+        try (StreamConnection s = conn;
              DataInputStream in = new DataInputStream(new BufferedInputStream(s.getInputStream()));
              DataOutputStream out = new DataOutputStream(new BufferedOutputStream(s.getOutputStream()))) {
 
-            s.setSoTimeout(IDLE_TIMEOUT_MS);
+            s.setReadTimeout(IDLE_TIMEOUT_MS);
 
             while (running) {
                 // Client gửi writeUTF -> server phải readUTF
@@ -196,7 +249,12 @@ public class ChunkedFileServer {
                     continue;
                 }
 
-                if (accessChecker != null && !accessChecker.test(cmd.peerId)) {
+                // Qua relay: id khai báo phải đúng danh tính relay đã xác thực (chống mạo danh peer đã được chấp nhận)
+                if (!origin.permitsClaimedId(cmd.peerId)) {
+                    sendError(out, "Access denied: peerId không khớp danh tính đã xác thực");
+                    continue;
+                }
+                if (accessChecker != null && !accessChecker.isAllowed(cmd.peerId, origin)) {
                     sendError(out, "Access denied: peer chưa được chấp nhận kết nối");
                     continue;
                 }
@@ -223,12 +281,9 @@ public class ChunkedFileServer {
         }
     }
 
-    // Trả về đường dẫn file nằm trong thư mục chia sẻ, hoặc null nếu không hợp lệ
+    // Trả về đường dẫn file nằm trong thư mục chia sẻ (chặn ../, đường dẫn tuyệt đối, symlink ra ngoài), hoặc null
     private Path resolveSharedFile(Path root, String fileName) {
-        if (fileName == null || fileName.isEmpty()) return null;
-        Path filePath = root.resolve(fileName).normalize();
-        if (!filePath.startsWith(root) || !Files.isRegularFile(filePath)) return null;
-        return filePath;
+        return SafePaths.resolveSharedFile(root, fileName);
     }
 
     // hàm xử lý handleMetaRequest

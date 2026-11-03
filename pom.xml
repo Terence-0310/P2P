@@ -6,7 +6,7 @@
 
     <groupId>org.example</groupId>
     <artifactId>P2PFileShare</artifactId>
-    <version>2.1</version>
+    <version>3.0</version>
     <name>P2PFileShare</name>
 
     <properties>
@@ -60,6 +60,34 @@
 
     <build>
         <plugins>
+            <plugin>
+                <!-- Giao thức relay dùng chung với relay-server (relay-server/src/shared/java).
+                     Integration test chạy relay thật trong tiến trình test nên thêm mã nguồn relay vào test. -->
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <id>add-relay-protocol</id>
+                        <phase>generate-sources</phase>
+                        <goals><goal>add-source</goal></goals>
+                        <configuration>
+                            <sources><source>relay-server/src/shared/java</source></sources>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>add-relay-server-for-tests</id>
+                        <phase>generate-test-sources</phase>
+                        <goals><goal>add-test-source</goal></goals>
+                        <configuration>
+                            <sources>
+                                <source>relay-server/src/main/java</source>
+                                <source>relay-server/src/test/java</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
