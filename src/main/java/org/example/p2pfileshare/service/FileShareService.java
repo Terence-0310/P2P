@@ -4,7 +4,14 @@ import org.example.p2pfileshare.model.DownloadHistory;
 import org.example.p2pfileshare.model.PeerInfo;
 import org.example.p2pfileshare.model.SharedFileLocal;
 import org.example.p2pfileshare.network.transfer.ChunkedFileServer;
+import org.example.p2pfileshare.network.transport.Channel;
+import org.example.p2pfileshare.network.transport.InboundOrigin;
+import org.example.p2pfileshare.network.transport.LanTcpTransport;
+import org.example.p2pfileshare.network.transport.PeerTransport;
+import org.example.p2pfileshare.network.transport.StreamConnection;
 import org.example.p2pfileshare.util.FolderWatcher;
+import org.example.p2pfileshare.util.NetworkSettings;
+import org.example.p2pfileshare.util.SafePaths;
 
 import java.io.File;
 import java.io.IOException;
@@ -14,6 +21,9 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
@@ -22,8 +32,6 @@ import java.util.stream.Stream;
 
 public class FileShareService {
 
-    // File tạm của quá trình tải (resume) không được chia sẻ
-    private static final List<String> TEMP_SUFFIXES = List.of(".part", ".bitmap", ".meta.properties");
     private static final long WATCH_DEBOUNCE_MS = 800;
 
     private final int fileServerPort;
@@ -32,8 +40,12 @@ public class FileShareService {
     private final HistoryService historyService;
     private String myDisplayName;
     private String myPeerId;
-    // Kiểm tra peer (theo peerId) đã được chấp nhận kết nối chưa trước khi cho tải file
-    private Predicate<String> accessChecker;
+    // Kiểm tra peer (theo peerId + nguồn kết nối) đã được chấp nhận kết nối chưa trước khi cho tải file
+    private ChunkedFileServer.AccessChecker accessChecker;
+    // Tầng truyền thông khi mình tải file của peer khác (LAN TCP hoặc relay)
+    private volatile PeerTransport transport = new LanTcpTransport();
+    // Tác vụ tải đang chạy theo peer: peer online trở lại thì đánh thức tác vụ đang chờ mạng
+    private final Map<String, Set<DownloadJob>> jobsByPeer = new ConcurrentHashMap<>();
     private final SimpleAIService aiService = new SimpleAIService();
 
     // Theo dõi thư mục chia sẻ để tự cập nhật danh sách file
@@ -64,6 +76,11 @@ public class FileShareService {
 
     // đổi folder chia sẻ
     public synchronized void setShareFolder(File folder) {
+        // không cho chia sẻ cả ổ đĩa hoặc nguyên thư mục người dùng
+        if (folder != null && SafePaths.isTooBroadToShare(folder.toPath())) {
+            throw new IllegalArgumentException("Không thể chia sẻ cả ổ đĩa hoặc toàn bộ thư mục người dùng. "
+                    + "Hãy tạo / chọn 1 thư mục con chỉ chứa tài liệu muốn chia sẻ.");
+        }
         stopWatcher();
 
         // folder null → không share
@@ -142,7 +159,9 @@ public class FileShareService {
 
         try (Stream<Path> paths = Files.walk(root)) {
             paths.filter(Files::isRegularFile)
-                 .filter(p -> !isHiddenOrTemp(root, p))
+                 .filter(p -> !SafePaths.isHiddenOrTemp(root, p))
+                 // symlink trỏ ra ngoài thư mục chia sẻ thì không liệt kê (server cũng chặn tải)
+                 .filter(p -> !Files.isSymbolicLink(p) || SafePaths.isInside(root, p))
                  .sorted(Comparator.comparing(p -> root.relativize(p).toString().toLowerCase()))
                  .forEach(p -> result.add(buildMetadata(root, p.toFile())));
         } catch (IOException | java.io.UncheckedIOException e) {
@@ -150,20 +169,6 @@ public class FileShareService {
         }
 
         return result;
-    }
-
-    // bỏ file ẩn, file trong thư mục ẩn (.git...) và file tạm khi đang tải
-    private static boolean isHiddenOrTemp(Path root, Path file) {
-        String name = file.getFileName().toString();
-        if (TEMP_SUFFIXES.stream().anyMatch(name::endsWith)) return true;
-        for (Path part : root.relativize(file)) {
-            if (part.toString().startsWith(".")) return true;
-        }
-        try {
-            return Files.isHidden(file);
-        } catch (IOException e) {
-            return false;
-        }
     }
 
     public List<SharedFileLocal> searchLocalFiles(String keyword) {
@@ -226,7 +231,37 @@ public class FileShareService {
 
     // Phải gọi trước khi server được khởi động
     public synchronized void setAccessChecker(Predicate<String> accessChecker) {
+        this.accessChecker = accessChecker == null ? null : (id, origin) -> accessChecker.test(id);
+    }
+
+    /** Như trên nhưng biết cả nguồn kết nối (LAN / relay đã xác thực) */
+    public synchronized void setAccessChecker(ChunkedFileServer.AccessChecker accessChecker) {
         this.accessChecker = accessChecker;
+    }
+
+    public void setTransport(PeerTransport transport) {
+        if (transport != null) this.transport = transport;
+    }
+
+    /** Luồng kênh file từ relay: giao cho ChunkedFileServer như 1 kết nối TCP bình thường */
+    public void acceptInboundFileStream(StreamConnection conn, InboundOrigin origin) {
+        ChunkedFileServer server;
+        synchronized (this) {
+            server = fileServer;
+        }
+        if (server != null && server.isRunning()) {
+            server.acceptExternal(conn, origin);
+            return;
+        }
+        Thread t = new Thread(() -> ChunkedFileServer.rejectConnection(conn, "No share folder set"), "reject-file-stream");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    /** Peer vừa liên lạc được trở lại: các tác vụ tải đang chờ mạng thử lại ngay, không đợi hết backoff */
+    public void retryWaitingDownloads(String peerId) {
+        Set<DownloadJob> jobs = jobsByPeer.get(peerId);
+        if (jobs != null) jobs.forEach(DownloadJob::retryNow);
     }
 
     /**
@@ -267,12 +302,16 @@ public class FileShareService {
         Path saveTo = resolveSavePath(requestedSaveTo);
 
         // Tạo Job: service chỉ tạo & trả về, UI giữ job để pause/resume/cancel
+        String peerId = peer.getPeerId();
+        Set<DownloadJob> peerJobs = jobsByPeer.computeIfAbsent(peerId, k -> ConcurrentHashMap.newKeySet());
+        DownloadJob[] self = new DownloadJob[1];
         DownloadJob job = new DownloadJob(
-                peer.getIp(),
-                peer.getFileServerPort(),
+                // mỗi lần mở kết nối kênh file đều đi qua tầng truyền thông: LAN TCP hoặc luồng relay
+                () -> transport.open(peer, Channel.FILE),
                 myPeerId,
                 relativePath,
                 saveTo,
+                NetworkSettings.downloadRetryMaxWaitSeconds() * 1000L,
                 p -> {
                     if (progressCallback != null) progressCallback.accept(p);
                 },
@@ -283,6 +322,8 @@ public class FileShareService {
                             case NEW -> statusCallback.accept("Đang chuẩn bị...");
                             case RUNNING -> statusCallback.accept("Đang tải...");
                             case PAUSED -> statusCallback.accept("Đã tạm dừng");
+                            case WAITING_NETWORK -> statusCallback.accept("Mất kết nối, đang chờ kết nối lại để tải tiếp"
+                                    + " (đã giữ các phần tải xong)...");
                             case CANCELLED -> statusCallback.accept("Đã hủy tải");
                             case COMPLETED -> statusCallback.accept("Tải xong: " + saveTo.getFileName());
                             case FAILED -> statusCallback.accept("Tải thất bại");
@@ -304,6 +345,10 @@ public class FileShareService {
                         }
                     }
 
+                    if (state == DownloadJob.State.COMPLETED || state == DownloadJob.State.FAILED
+                            || state == DownloadJob.State.CANCELLED) {
+                        if (self[0] != null) peerJobs.remove(self[0]);
+                    }
                     if (stateCallback != null) stateCallback.accept(state);
                 },
                 err -> {
@@ -314,6 +359,8 @@ public class FileShareService {
                 }
         );
 
+        self[0] = job;
+        peerJobs.add(job);
         // Service KHÔNG block: chỉ start thread và trả job về cho UI
         job.start();
         return job;

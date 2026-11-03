@@ -73,6 +73,17 @@ public class ConnectionService {
         return acknowledged;
     }
 
+    /**
+     * Heartbeat phát hiện peer kia không còn chấp nhận mình (vd. đã tắt và mở lại ứng dụng nên quên kết nối cũ):
+     * gỡ kết nối ở phía mình và báo như khi peer kia chủ động ngắt.
+     */
+    public void handleRemoteGone(String peerId) {
+        if (!isConnected(peerId)) return;
+        server.revokePeer(peerId);
+        client.removeConnectedPeer(peerId);
+        for (Listener l : listeners) l.onDisconnected(peerId, true);
+    }
+
     public boolean isConnected(String peerId) {
         return client.isConnectedTo(peerId) || server.isAccepted(peerId);
     }
