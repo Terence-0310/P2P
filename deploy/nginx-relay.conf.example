@@ -1,0 +1,42 @@
+# Phương án thay Caddy: Nginx + chứng chỉ Let's Encrypt (certbot --nginx -d relay.example.com)
+# Relay chạy trên chính VPS: RELAY_BIND=127.0.0.1 RELAY_PORT=8080 RELAY_TRUST_PROXY=true java -jar p2p-relay-server.jar
+# Đặt file vào /etc/nginx/sites-available/p2p-relay rồi ln -s sang sites-enabled, nginx -t && systemctl reload nginx
+
+server {
+    listen 443 ssl http2;
+    server_name relay.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/relay.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/relay.example.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    location = /ws {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        # nâng cấp lên WebSocket
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        # truyền file lâu: không cắt kết nối im lặng (relay tự ping mỗi 15s)
+        proxy_read_timeout 1h;
+        proxy_send_timeout 1h;
+        # chuyển tiếp theo luồng, không đệm cả file
+        proxy_buffering off;
+        proxy_request_buffering off;
+    }
+
+    location = /health {
+        proxy_pass http://127.0.0.1:8080;
+    }
+
+    location / {
+        return 404;
+    }
+}
+
+server {
+    listen 80;
+    server_name relay.example.com;
+    return 301 https://$host$request_uri;
+}

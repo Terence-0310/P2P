@@ -1,0 +1,26 @@
+# Caddy: TLS tự động (Let's Encrypt) + reverse proxy WebSocket tới relay.
+# RELAY_DOMAIN lấy từ relay.env. Chưa có tên miền thì có thể dùng dịch vụ DNS miễn phí trỏ theo IP,
+# ví dụ 203-0-113-10.sslip.io (thay bằng IP VPS, dấu chấm thành dấu gạch ngang).
+{$RELAY_DOMAIN} {
+	# Kết nối WebSocket của ứng dụng: wss://RELAY_DOMAIN/ws (Caddy tự xử lý Upgrade: websocket)
+	handle /ws {
+		reverse_proxy relay:8080 {
+			# chuyển tiếp ngay từng frame, không đệm
+			flush_interval -1
+		}
+	}
+
+	# Kiểm tra relay còn sống: https://RELAY_DOMAIN/health
+	handle /health {
+		reverse_proxy relay:8080
+	}
+
+	handle {
+		respond "P2PFileShare relay" 404
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}
