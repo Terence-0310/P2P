@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<!-- Internet Mode: kết nối 2 máy ở 2 mạng khác nhau qua Relay Server -->
+<VBox xmlns="http://javafx.com/javafx/17"
+      xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="org.example.p2pfileshare.controller.InternetPanelController"
+      spacing="15">
+
+    <VBox spacing="10" style="-fx-background-color: white; -fx-padding: 15; -fx-background-radius: 8; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.05), 5, 0, 0, 1);">
+        <children>
+            <HBox spacing="15" alignment="CENTER_LEFT">
+                <Label text="🌍" style="-fx-font-size: 24px;" />
+                <VBox>
+                    <Label text="Internet (qua Relay)" style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;" />
+                    <Label text="Kết nối 2 máy ở 2 mạng khác nhau (Wi-Fi, 4G/5G) qua máy chủ chuyển tiếp, không cần mở cổng router" style="-fx-font-size: 12px; -fx-text-fill: #7f8c8d;" />
+                </VBox>
+                <Region HBox.hgrow="ALWAYS" />
+                <Label fx:id="relayStateLabel" text="⚪ Relay: chưa kết nối" style="-fx-font-weight: bold; -fx-text-fill: #7f8c8d;" />
+            </HBox>
+
+            <Separator />
+
+            <HBox spacing="8" alignment="CENTER_LEFT">
+                <Label text="Địa chỉ relay:" minWidth="110" style="-fx-font-weight: bold; -fx-text-fill: #7f8c8d;" />
+                <TextField fx:id="relayUrlField" promptText="wss://relay.ten-mien-cua-ban.com/ws" HBox.hgrow="ALWAYS" />
+                <Button fx:id="connectRelayButton" text="🔌 Kết nối relay" onAction="#onConnectRelay" styleClass="button" />
+                <Button fx:id="disconnectRelayButton" text="Ngắt relay" onAction="#onDisconnectRelay" styleClass="button, secondary" disable="true" />
+            </HBox>
+
+            <HBox spacing="8" alignment="CENTER_LEFT">
+                <Label text="Mã của bạn:" minWidth="110" style="-fx-font-weight: bold; -fx-text-fill: #7f8c8d;" />
+                <Label fx:id="inviteCodeLabel" text="—" style="-fx-font-family: 'Consolas', 'Courier New', monospace; -fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #2980b9;" />
+                <Label fx:id="inviteExpiryLabel" text="" style="-fx-text-fill: #7f8c8d; -fx-font-size: 12px;" />
+                <Region HBox.hgrow="ALWAYS" />
+                <Button fx:id="copyCodeButton" text="📋 Sao chép" onAction="#onCopyCode" styleClass="button, secondary" disable="true" />
+                <Button fx:id="newCodeButton" text="🔄 Tạo mã mới" onAction="#onNewCode" styleClass="button, secondary" disable="true" />
+            </HBox>
+
+            <HBox spacing="8" alignment="CENTER_LEFT">
+                <Label text="Mã máy kia:" minWidth="110" style="-fx-font-weight: bold; -fx-text-fill: #7f8c8d;" />
+                <TextField fx:id="remoteCodeField" promptText="VD: K7QM-4XZ9" prefWidth="170" />
+                <Button fx:id="connectPeerButton" text="🔗 Kết nối" onAction="#onConnectByCode" styleClass="button" style="-fx-background-color: #27ae60;" disable="true" />
+                <Label fx:id="messageLabel" text="Nhập địa chỉ relay rồi bấm Kết nối relay." wrapText="true" HBox.hgrow="ALWAYS" style="-fx-text-fill: #2980b9; -fx-font-style: italic;" />
+            </HBox>
+        </children>
+    </VBox>
+
+    <TableView fx:id="remotePeerTable" VBox.vgrow="ALWAYS">
+        <columns>
+            <TableColumn fx:id="colRemoteName" text="Tên máy (Peer Name)" prefWidth="220" />
+            <TableColumn fx:id="colRemoteId" text="Mã định danh" prefWidth="120" style="-fx-alignment: CENTER;" />
+            <TableColumn fx:id="colRemoteHealth" text="Trạng thái mạng" prefWidth="150" style="-fx-alignment: CENTER;" />
+            <TableColumn fx:id="colRemoteConnection" text="Kết nối" prefWidth="170" style="-fx-alignment: CENTER;" />
+        </columns>
+        <columnResizePolicy>
+            <TableView fx:constant="CONSTRAINED_RESIZE_POLICY" />
+        </columnResizePolicy>
+        <placeholder>
+            <Label text="Chưa có máy nào kết nối qua Internet. Nhập mã của máy kia rồi bấm 'Kết nối'." style="-fx-text-fill: #bdc3c7; -fx-font-size: 14px;" />
+        </placeholder>
+    </TableView>
+
+    <HBox spacing="8" alignment="CENTER_LEFT">
+        <Button text="📂 Mở kho file" onAction="#onOpenPeer" styleClass="button" />
+        <Button text="❌ Ngắt kết nối" onAction="#onDisconnectPeer" styleClass="button, danger" />
+        <Region HBox.hgrow="ALWAYS" />
+        <Label text="🔒 TLS giữa mỗi máy và relay. Relay chỉ chuyển tiếp theo luồng, không lưu file (chưa mã hoá đầu cuối)."
+               wrapText="true" style="-fx-text-fill: #7f8c8d; -fx-font-size: 11px;" />
+    </HBox>
+</VBox>

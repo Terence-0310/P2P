@@ -13,7 +13,7 @@
     <top>
         <HBox spacing="15" alignment="CENTER_LEFT" style="-fx-background-color: #2c3e50; -fx-padding: 10 20;">
             <Label text="P2P SHARING" style="-fx-text-fill: white; -fx-font-size: 18px; -fx-font-weight: bold;" />
-            <Label text="LAN File Transfer" style="-fx-text-fill: #bdc3c7; -fx-font-size: 12px; -fx-font-style: italic;" />
+            <Label text="LAN &amp; Internet File Transfer" style="-fx-text-fill: #bdc3c7; -fx-font-size: 12px; -fx-font-style: italic;" />
 
             <Region HBox.hgrow="ALWAYS" />
 
@@ -40,7 +40,7 @@
                  style="-fx-background-color: #f8f9fa;">
 
             <tabs>
-                <Tab text="🌐 Mạng LAN" closable="false">
+                <Tab text="🌐 Kết nối mạng" closable="false">
                     <content>
                         <fx:include source="PeerTab.fxml" fx:id="peerTab" />
                     </content>
@@ -80,7 +80,7 @@
 
             <Region HBox.hgrow="ALWAYS" />
 
-            <Label text="P2P App v2.0" style="-fx-text-fill: #bdc3c7; -fx-font-size: 11px;" />
+            <Label text="P2P App v3.0" style="-fx-text-fill: #bdc3c7; -fx-font-size: 11px;" />
         </HBox>
     </bottom>
 

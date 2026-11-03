@@ -9,8 +9,21 @@
             fx:controller="org.example.p2pfileshare.controller.PeerTabController"
             style="-fx-background-color: #f8f9fa;">
 
+    <fx:define>
+        <ToggleGroup fx:id="modeGroup" />
+    </fx:define>
+
     <VBox spacing="15" AnchorPane.topAnchor="20" AnchorPane.leftAnchor="20" AnchorPane.rightAnchor="20" AnchorPane.bottomAnchor="20">
 
+        <!-- Chế độ kết nối: LAN (cùng mạng) hoặc Internet (2 mạng khác nhau, qua relay) -->
+        <HBox spacing="10" alignment="CENTER_LEFT">
+            <Label text="Chế độ kết nối:" style="-fx-font-weight: bold; -fx-text-fill: #2c3e50;" />
+            <ToggleButton fx:id="lanModeButton" text="🏠 LAN" toggleGroup="$modeGroup" selected="true" onAction="#onLanMode" styleClass="button" />
+            <ToggleButton fx:id="internetModeButton" text="🌍 Internet" toggleGroup="$modeGroup" onAction="#onInternetMode" styleClass="button, secondary" />
+            <Label fx:id="modeHintLabel" text="Các máy dùng chung 1 mạng Wi-Fi / LAN" style="-fx-text-fill: #7f8c8d; -fx-font-size: 12px;" />
+        </HBox>
+
+        <VBox fx:id="lanPane" spacing="15" VBox.vgrow="ALWAYS">
         <VBox spacing="10" style="-fx-background-color: white; -fx-padding: 15; -fx-background-radius: 8; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.05), 5, 0, 0, 1);">
             <children>
                 <HBox spacing="15" alignment="CENTER_LEFT">
@@ -52,6 +65,9 @@
                 <Label text="Chưa tìm thấy thiết bị nào. Hãy nhấn 'Quét LAN'." style="-fx-text-fill: #bdc3c7; -fx-font-size: 14px;" />
             </placeholder>
         </TableView>
+        </VBox>
+
+        <fx:include fx:id="internetPanel" source="InternetPanel.fxml" VBox.vgrow="ALWAYS" visible="false" managed="false" />
 
     </VBox>
 

@@ -13,6 +13,7 @@ import org.example.p2pfileshare.network.control.ControlClient;
 import org.example.p2pfileshare.network.control.ControlProtocol;
 import org.example.p2pfileshare.service.DownloadJob;
 import org.example.p2pfileshare.service.FileShareService;
+import org.example.p2pfileshare.service.PeerHealthMonitor;
 import org.example.p2pfileshare.util.AppConfig;
 import org.example.p2pfileshare.util.TransferStats;
 
@@ -69,7 +70,7 @@ public class ConnectedPeerController {
         this.fileShareService = fileShareService;
         this.onDisconnectRequested = onDisconnectRequested;
 
-        peerNameLabel.setText(peer.getName() + " (" + peer.getIp() + ")");
+        peerNameLabel.setText(peer.getName() + " (" + addressOf(peer) + ")");
 
         colName.setCellValueFactory(new PropertyValueFactory<>("name"));
         colRelative.setCellValueFactory(new PropertyValueFactory<>("relativePath"));
@@ -229,11 +230,35 @@ public class ConnectedPeerController {
         startDaemon(task, "reload-remote-files");
     }
 
+    /** Peer chạy qua Internet hiển thị "Internet qua relay" thay vì IP */
+    private static String addressOf(PeerInfo peer) {
+        return peer.isRelay() ? "Internet qua relay" : peer.getIp();
+    }
+
+    /** Heartbeat thấy peer mất mạng / quay lại (JavaFX thread). Không ngắt kết nối: peer quay lại là dùng tiếp. */
+    public void onPeerHealthChanged(PeerHealthMonitor.Health health) {
+        if (disconnected) return;
+        String suffix = switch (health) {
+            case ONLINE -> "";
+            case OFFLINE -> "  🔴 Offline";
+            case RECONNECTING -> "  🟠 Reconnecting";
+            case CONNECTING -> "  🟡 Connecting";
+        };
+        peerNameLabel.setText(peer.getName() + " (" + addressOf(peer) + ")" + suffix);
+        if (health == PeerHealthMonitor.Health.OFFLINE && (currentJob == null || !currentJob.isActive())) {
+            statusLabel.setText("Peer đang mất kết nối, sẽ tự cập nhật khi peer online trở lại");
+        } else if (health == PeerHealthMonitor.Health.ONLINE && (currentJob == null || !currentJob.isActive())) {
+            statusLabel.setText("Peer đã online");
+        }
+    }
+
     /** Gọi trên JavaFX thread khi kết nối với peer này đã bị ngắt (do mình hoặc do peer) */
     public void onPeerDisconnected() {
         disconnected = true;
         progress.setProgress(0);
-        statusLabel.setText("Đã ngắt kết nối với peer. Bấm 'Kết nối' ở tab Mạng LAN để kết nối lại.");
+        statusLabel.setText(peer.isRelay()
+                ? "Đã ngắt kết nối với peer. Nhập lại mã kết nối ở chế độ Internet để kết nối lại."
+                : "Đã ngắt kết nối với peer. Bấm 'Kết nối' ở tab Mạng LAN để kết nối lại.");
         fileTable.setDisable(true);
         btnDownload.setDisable(true);
         // tải dở (nếu có) sẽ bị peer từ chối và báo thất bại, file .part được giữ lại
@@ -329,6 +354,12 @@ public class ConnectedPeerController {
                 resetButtons();
             }
             case FAILED -> resetButtons();
+            case WAITING_NETWORK -> {
+                // đang chờ mạng: vẫn cho tạm dừng / huỷ, tự tải tiếp khi kết nối lại
+                btnPause.setDisable(false);
+                btnResume.setDisable(true);
+                btnCancel.setDisable(false);
+            }
             default -> { }
         }
         if (fileTable.isDisabled()) {
@@ -356,7 +387,7 @@ public class ConnectedPeerController {
 
     public void updatePeerDisplayName(String newName) {
         if (newName == null) return;
-        Platform.runLater(() -> peerNameLabel.setText(newName + " (" + peer.getIp() + ")"));
+        Platform.runLater(() -> peerNameLabel.setText(newName + " (" + addressOf(peer) + ")"));
     }
 
     private static void startDaemon(Task<?> task, String name) {
